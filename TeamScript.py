@@ -1,6 +1,7 @@
 import json
 import sys
 import os
+from datetime import datetime
 from tools import getScriptName, setupLogging
 from batchConfig import run_config_batch
 
@@ -16,8 +17,9 @@ Options:
 """)
 
 def main():
+    timestamp - datetime.now().strftime(%Y%m%d_%H%M")
     scriptName = getScriptName()
-    setupLogging(scriptName)
+    setupLogging(scriptName, timestamp)
 
     if "-h" in sys.argv or "--help" in sys.argv:
         print_usage(scriptName)
