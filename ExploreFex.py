@@ -4,6 +4,33 @@ from tools import getScriptName, setupLogging
 from openpyxl import Workbook
 import re
 import logging
+def get_fex_and_native_counts(hostname, netmikoUser, passwd, ws):
+    try:
+        conn = ConnectHandler(
+            device_type="cisco_nxos",
+            host=hostname,
+            username=netmikoUser,
+            password=passwd
+        )
+        output = conn.send_command("show interface status", use_textfsm=False)
+        conn.disconnect()
+
+        counts = {}
+
+        for line in output.splitlines():
+            match = re.match(r"Eth(\d+)/(\d+)", line)
+            if match and "connected" in line:
+                slot_or_fex = int(match.group(1))
+                label = "native" if slot_or_fex < 100 else str(slot_or_fex)
+                counts[label] = counts.get(label, 0) + 1
+
+        for label, count in sorted(counts.items(), key=lambda x: (x[0] != "native", x[0])):
+            ws.append([hostname, label, count])
+
+    except Exception as e:
+        logging.error(f"Failed to process {hostname}: {e}")
+
+
 
 def get_fex_and_native_counts(hostname, netmikoUser, passwd, ws):
     try:
