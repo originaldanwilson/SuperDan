@@ -1,24 +1,18 @@
-import time
 from mj import jiggle_mouse
-from pywinauto import Desktop
+import time
 
-def get_windows():
-    return [w for w in Desktop(backend="win32").windows()
-            if w.is_visible() and w.window_text().strip()]
+def alt_tab():
+    pyautogui.keyDown('alt')
+    time.sleep(0.3)
+    pyautogui.press('tab')
+    time.sleep(0.5)
+    pyautogui.keyUp('alt')
+    time.sleep(1)
 
 def main():
-    windows = get_windows()
-    index = 0
-
-    while windows:
+    while True:
         jiggle_mouse(interval=30)
-        try:
-            win = windows[index % len(windows)]
-            print(f"Switching to: {win.window_text()}")
-            win.set_focus()
-        except Exception as e:
-            print(f"Could not focus window: {e}")
-        index += 1
+        alt_tab()
         time.sleep(30)
 
 if __name__ == "__main__":
