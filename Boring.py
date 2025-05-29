@@ -1,5 +1,6 @@
 from mj import jiggle_mouse
 import time
+import pyautogui
 
 def alt_tab():
     pyautogui.keyDown('alt')
@@ -11,7 +12,7 @@ def alt_tab():
 
 def main():
     while True:
-        jiggle_mouse(interval=30)
+        #jiggle_mouse(interval=30)
         alt_tab()
         time.sleep(30)
 
