@@ -7,6 +7,38 @@ from openpyxl.styles import Font
 import logging
 import re
 
+def parse_portchannel_summary(output):
+    portchannel_map = {}
+    current_pc = None
+    dash_count = 0
+
+    for line in output.splitlines():
+        if re.match(r'^-+$', line.strip()):
+            dash_count += 1
+            continue
+
+        if dash_count < 2:
+            continue
+
+        line = line.strip()
+
+        # Look for a line that starts a new port-channel group like:
+        # "10     Po1(SU)     LACP       Eth1/22(P)  Eth1/33(P)"
+        po_line_match = re.match(r'^\d+\s+(Po\d+\w+)', line)
+        if po_line_match:
+            # Extract Po ID with status, e.g. Po1(SU)
+            current_pc = po_line_match.group(1)
+
+        if current_pc:
+            # Find all interfaces like Eth1/22(P)
+            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)[\s]*(\w)', line)
+            for intf, flag in matches:
+                portchannel_map[intf] = f"{current_pc} ({flag})"
+
+    return portchannel_map
+
+
+
 
 def parse_portchannel_summary(output):
     portchannel_map = {}
