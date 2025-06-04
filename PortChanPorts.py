@@ -10,6 +10,41 @@ import re
 def parse_portchannel_summary(output):
     portchannel_map = {}
     current_pc = None
+    dash_count = 0
+
+    for line in output.splitlines():
+        if re.match(r'^-+$', line.strip()):
+            dash_count += 1
+            continue
+
+        # Skip everything before second dashed line
+        if dash_count < 2:
+            continue
+
+        line = line.strip()
+        if not line:
+            continue
+
+        # Match the start of a Po group line like: "10     Po10(SU)     LACP"
+        po_match = re.match(r'^\d+\s+(Po\d+)', line)
+        if po_match:
+            current_pc = po_match.group(1)
+            continue
+
+        # Match member lines under the current Po
+        if current_pc:
+            # Find interfaces and their flags, like Eth1/1/8(P)
+            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)(\w)', line)
+            for intf, status in matches:
+                portchannel_map[intf] = f"{current_pc} ({status})"
+
+    return portchannel_map
+
+
+
+def parse_portchannel_summary(output):
+    portchannel_map = {}
+    current_pc = None
 
     for line in output.splitlines():
         line = line.strip()
