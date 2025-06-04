@@ -10,6 +10,30 @@ import re
 def parse_portchannel_summary(output):
     portchannel_map = {}
     current_pc = None
+
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith('Group') or 'Flags' in line:
+            continue
+
+        # Detect Port-Channel summary line
+        if re.match(r'^\d+\s+Po\d+', line):
+            parts = line.split()
+            current_pc = parts[1]  # e.g., Po10
+        elif current_pc:
+            # Match lines like: Eth1/1/8(P) Eth1/1/9(D)
+            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)(\w)', line)
+            for intf, status in matches:
+                portchannel_map[intf] = f"{current_pc} ({status})"
+    return portchannel_map
+
+
+
+
+
+def parse_portchannel_summary(output):
+    portchannel_map = {}
+    current_pc = None
     for line in output.splitlines():
         if line.startswith('Group') or 'Flags' in line:
             continue
