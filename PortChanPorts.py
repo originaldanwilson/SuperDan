@@ -15,24 +15,29 @@ def parse_portchannel_summary(output):
             continue
         if re.match(r'^\d+\s+Po\d+', line):
             parts = line.split()
-            current_pc = parts[1]  # Po10
+            current_pc = parts[1]
         elif current_pc and re.search(r'(Eth\d+/\d+(/\d+)?)', line):
             interfaces = re.findall(r'(Eth\d+/\d+(/\d+)?)', line)
             for match in interfaces:
                 portchannel_map[match[0]] = current_pc
     return portchannel_map
 
-def correlate_neighbors(device):
-    logging.info(f"Connecting to {device['host']}")
+def correlate_neighbors(hostname, netmikoUser, passwd, enable):
+    logging.info(f"Connecting to {hostname}")
     try:
-        conn = ConnectHandler(**device)
+        conn = ConnectHandler(
+            device_type='cisco_nxos',
+            host=hostname,
+            username=netmikoUser,
+            password=passwd,
+            secret=enable
+        )
         conn.enable()
-
         cdp_output = conn.send_command("show cdp neighbors", use_textfsm=True)
         pc_output = conn.send_command("show port-channel summary", use_textfsm=False)
         conn.disconnect()
     except Exception as e:
-        logging.error(f"{device['host']}: {e}")
+        logging.error(f"{hostname}: {e}")
         return []
 
     portchannel_map = parse_portchannel_summary(pc_output)
@@ -41,6 +46,7 @@ def correlate_neighbors(device):
     for entry in cdp_output:
         local_intf = entry['local_port']
         results.append({
+            'Hostname': hostname,
             'Local Interface': local_intf,
             'Port-Channel': portchannel_map.get(local_intf, '---'),
             'Neighbor': entry['destination_host'],
@@ -48,29 +54,26 @@ def correlate_neighbors(device):
         })
     return results
 
-def write_multi_sheet_excel(all_data, filename):
+def write_flat_excel(all_rows, filename):
     wb = Workbook()
-    first = True
-    for device_name, rows in all_data.items():
-        if first:
-            ws = wb.active
-            ws.title = device_name[:31]
-            first = False
-        else:
-            ws = wb.create_sheet(title=device_name[:31])
+    ws = wb.active
+    ws.title = "CDP_PortChannels"
 
-        headers = ['Local Interface', 'Port-Channel', 'Neighbor', 'Neighbor Port']
-        ws.append(headers)
-        for col in ws[1]:
-            col.font = Font(bold=True)
+    headers = ['Hostname', 'Local Interface', 'Port-Channel', 'Neighbor', 'Neighbor Port']
+    ws.append(headers)
+    for col in ws[1]:
+        col.font = Font(bold=True)
 
-        for row in rows:
-            ws.append([
-                row['Local Interface'],
-                row['Port-Channel'],
-                row['Neighbor'],
-                row['Neighbor Port']
-            ])
+    for row in all_rows:
+        ws.append([
+            row['Hostname'],
+            row['Local Interface'],
+            row['Port-Channel'],
+            row['Neighbor'],
+            row['Neighbor Port']
+        ])
+
+    ws.freeze_panes = "A2"
     wb.save(filename)
     logging.info(f"Saved Excel report: {filename}")
 
@@ -80,27 +83,16 @@ def main():
     setupLogging(scriptName, timestamp)
 
     netmikoUser, passwd, enable = get_netmiko_creds()
+    devices = ["switchzz1", "switzz2", "switchAPAC44"]
 
-    devices = [
-        {'device_type': 'cisco_nxos', 'host': '10.0.0.1'},
-        {'device_type': 'cisco_nxos', 'host': '10.0.0.2'},
-        # Add more devices as needed
-    ]
-    for device in devices:
-        device['username'] = netmikoUser
-        device['password'] = passwd
-        device['secret'] = enable
+    all_rows = []
+    for hostname in devices:
+        rows = correlate_neighbors(hostname, netmikoUser, passwd, enable)
+        all_rows.extend(rows)
 
-    all_data = {}
-    for device in devices:
-        device_name = device['host']
-        data = correlate_neighbors(device)
-        if data:
-            all_data[device_name] = data
-
-    if all_data:
-        excel_file = f"cdp_pc_multi_{timestamp}.xlsx"
-        write_multi_sheet_excel(all_data, excel_file)
+    if all_rows:
+        output_file = f"cdp_pc_flat_{timestamp}.xlsx"
+        write_flat_excel(all_rows, output_file)
 
 if __name__ == "__main__":
     main()
