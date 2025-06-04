@@ -7,6 +7,7 @@ from openpyxl.styles import Font
 import logging
 import re
 
+
 def parse_portchannel_summary(output):
     portchannel_map = {}
     current_pc = None
@@ -17,24 +18,19 @@ def parse_portchannel_summary(output):
             dash_count += 1
             continue
 
-        # Skip everything before second dashed line
         if dash_count < 2:
             continue
 
         line = line.strip()
-        if not line:
-            continue
 
-        # Match the start of a Po group line like: "10     Po10(SU)     LACP"
+        # New Po line with optional members
         po_match = re.match(r'^\d+\s+(Po\d+)', line)
         if po_match:
             current_pc = po_match.group(1)
-            continue
 
-        # Match member lines under the current Po
+        # Always look for interfaces, even on same line as Po or wrapped line
         if current_pc:
-            # Find interfaces and their flags, like Eth1/1/8(P)
-            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)(\w)', line)
+            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)[\s]*(\w)', line)
             for intf, status in matches:
                 portchannel_map[intf] = f"{current_pc} ({status})"
 
@@ -42,48 +38,15 @@ def parse_portchannel_summary(output):
 
 
 
-def parse_portchannel_summary(output):
-    portchannel_map = {}
-    current_pc = None
 
-    for line in output.splitlines():
-        line = line.strip()
-        if not line or line.startswith('Group') or 'Flags' in line:
-            continue
 
-        # Detect Port-Channel summary line
-        if re.match(r'^\d+\s+Po\d+', line):
-            parts = line.split()
-            current_pc = parts[1]  # e.g., Po10
-        elif current_pc:
-            # Match lines like: Eth1/1/8(P) Eth1/1/9(D)
-            matches = re.findall(r'(Eth\d+/\d+(?:/\d+)?)(\w)', line)
-            for intf, status in matches:
-                portchannel_map[intf] = f"{current_pc} ({status})"
-    return portchannel_map
+    
 
 
 
 
 
-def parse_portchannel_summary(output):
-    portchannel_map = {}
-    current_pc = None
-    for line in output.splitlines():
-        if line.startswith('Group') or 'Flags' in line:
-            continue
-        if re.match(r'^\d+\s+Po\d+', line):
-            parts = line.split()
-            current_pc = parts[1]
-        elif current_pc and re.search(r'(Eth\d+/\d+(/\d+)?)', line):
-            interfaces = re.findall(r'(Eth\d+/\d+(/\d+)?)', line)
-            for match in interfaces:
-                portchannel_map[match[0]] = current_pc
-    return portchannel_map
 
-def correlate_neighbors(hostname, netmikoUser, passwd, enable):
-    logging.info(f"Connecting to {hostname}")
-    try:
         conn = ConnectHandler(
             device_type='cisco_nxos',
             host=hostname,
