@@ -41,7 +41,17 @@ def correlate_neighbors(hostname, netmikoUser, passwd, enable):
         return []
 
     portchannel_map = parse_portchannel_summary(pc_output)
-
+results = []
+for entry in cdp_output:
+    local_intf = entry['local_interface']
+    results.append({
+        'Hostname': hostname,
+        'Local Interface': local_intf,
+        'Port-Channel': portchannel_map.get(local_intf, '---'),
+        'Neighbor': entry['neighbor_name'],
+        'Neighbor Port': entry['neighbor_interface'],
+        'Platform': entry.get('platform', '---')
+    })
     results = []
     for entry in cdp_output:
         local_intf = entry['local_port']
