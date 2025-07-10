@@ -1,0 +1,23 @@
+import secrets
+import hashlib
+
+def generate_ntp_keys(filename="ntp.keys", num_keys=10, algorithm="SHA1"):
+    """
+    Generates an ntp.keys file with specified number of keys and algorithm.
+    Each key will have a key ID starting from 1.
+    """
+    hash_name = algorithm.upper()
+    valid_hashes = {"MD5", "SHA1"}
+    if hash_name not in valid_hashes:
+        raise ValueError(f"Unsupported hash algorithm: {algorithm}")
+
+    with open(filename, "w") as f:
+        for key_id in range(1, num_keys + 1):
+            # generate a 20-byte random key and hex-encode it
+            key = secrets.token_hex(20)
+            f.write(f"{key_id} {hash_name} {key}\n")
+
+    print(f"Generated {num_keys} NTP keys using {hash_name} in {filename}")
+
+# Example usage:
+generate_ntp_keys(filename="ntp.keys", num_keys=5, algorithm="SHA1")
