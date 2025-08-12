@@ -28,9 +28,9 @@ def load_network_ranges(csv_file):
                 network_col = col
                 break
         
-        # Look for category column (containing msft/zx/zsscaler)
+        # Look for category column (containing microsoft/zscaler or msft/zx)
         for col in df.columns:
-            if any(df[col].astype(str).str.contains('msft|zx|zsscaler', case=False, na=False)):
+            if any(df[col].astype(str).str.contains('microsoft|zscaler|msft|zx', case=False, na=False)):
                 category_col = col
                 break
         
@@ -133,7 +133,7 @@ def categorize_ips(ip_addresses, networks):
     Categorize IP addresses based on network ranges
     """
     results = []
-    categorized_count = {'microsoft': 0, 'zsscaler': 0, 'msft': 0, 'zx': 0, 'uncategorized': 0}
+    categorized_count = {'microsoft': 0, 'zscaler': 0, 'msft': 0, 'zx': 0, 'uncategorized': 0}
     
     print("Categorizing IP addresses...")
     for i, ip_str in enumerate(ip_addresses):
