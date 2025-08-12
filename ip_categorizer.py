@@ -81,8 +81,10 @@ def load_ip_addresses(xlsx_file):
             ip_col = None
             for col in df.columns:
                 # Check if column contains IP-like data
-                sample_values = df[col].dropna().astype(str).head(10)
-                if any(sample_values.str.match(r'^\d+\.\d+\.\d+\.\d+$')):
+                sample_values = df[col].dropna().astype(str).head(20)  # Check more samples
+                ip_matches = sample_values.str.match(r'^\d+\.\d+\.\d+\.\d+$').sum()
+                
+                if ip_matches >= 5:  # If at least 5 look like IPs
                     ip_col = col
                     break
             
@@ -116,8 +118,10 @@ def load_ip_addresses(xlsx_file):
             print(f"Extracted {len(sheet_ips)} valid IPs from sheet '{sheet_name}'")
         
         # Remove duplicates while preserving order
+        print(f"Total IPs before deduplication: {len(all_ips)}")
         unique_ips = list(dict.fromkeys(all_ips))
-        print(f"Total unique IP addresses: {len(unique_ips)}")
+        print(f"Total unique IP addresses after deduplication: {len(unique_ips)}")
+        print(f"Duplicates removed: {len(all_ips) - len(unique_ips)}")
         return unique_ips
         
     except Exception as e:
