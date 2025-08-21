@@ -1,0 +1,127 @@
+! Configuration for NXOS-SW10
+! IP: 192.168.1.19
+
+hostname NXOS-SW10
+clock timezone EST -5 0
+ip domain-name example.com
+
+! Enable features
+feature bgp
+feature ospf
+feature interface-vlan
+feature lacp
+feature vpc
+feature lldp
+
+! VLAN configuration
+vlan 100
+  name DATA_VLAN_10
+  state active
+
+vlan 105
+  name VOICE_VLAN_10
+  state active
+
+vlan 210
+  name MGMT_VLAN_10
+  state active
+
+! VRF configuration (if applicable)
+! No VRF configuration for this switch
+
+! Interface configurations
+interface mgmt0
+  description Management Interface
+  ip address 192.168.100.19/24
+  vrf member management
+  no shutdown
+
+interface Ethernet1/1
+  description Uplink to Core
+  switchport mode trunk
+  switchport trunk allowed vlan 100,105
+  switchport trunk native vlan 999
+  no shutdown
+
+interface Ethernet1/2
+  description Uplink to Core - Backup
+  switchport mode trunk
+  switchport trunk allowed vlan 100,105
+  switchport trunk native vlan 999
+  no shutdown
+
+! Access port configurations
+
+interface Ethernet1/55
+  description Access Port 55
+  switchport mode access
+  switchport access vlan 100
+  switchport voice vlan 105
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/56
+  description Access Port 56
+  switchport mode access
+  switchport access vlan 100
+  switchport voice vlan 105
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/57
+  description Access Port 57
+  switchport mode access
+  switchport access vlan 100
+  switchport voice vlan 105
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/58
+  description Access Port 58
+  switchport mode access
+  switchport access vlan 100
+  switchport voice vlan 105
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/59
+  description Access Port 59
+  switchport mode access
+  switchport access vlan 100
+  switchport voice vlan 105
+  spanning-tree port type edge
+  no shutdown
+
+! SVI configurations
+interface Vlan100
+  description Data VLAN SVI
+  ip address 10.10.10.1/24
+  no shutdown
+
+interface Vlan105
+  description Voice VLAN SVI
+  ip address 10.10.15.1/24
+  no shutdown
+
+! Routing configuration
+router bgp 650010
+  router-id 10.10.10.1
+  bestpath as-path multipath-relax
+  address-family ipv4 unicast
+    maximum-paths 4
+
+! Global settings
+spanning-tree mode rapid-pvst
+spanning-tree vlan 100 priority 8192
+spanning-tree vlan 105 priority 8192
+
+! Logging
+logging server 192.168.1.200 6
+logging timestamp microseconds
+
+! SNMP
+snmp-server community public ro
+snmp-server location "Switch 10 Location"
+snmp-server contact "Network Team"
+
+! NTP
+ntp server 192.168.1.10 prefer
+ntp server 192.168.1.11
+
+! End of configuration

@@ -1,0 +1,127 @@
+! Configuration for NXOS-SW08
+! IP: 192.168.1.17
+
+hostname NXOS-SW08
+clock timezone EST -5 0
+ip domain-name example.com
+
+! Enable features
+feature bgp
+feature ospf
+feature interface-vlan
+feature lacp
+feature vpc
+feature lldp
+
+! VLAN configuration
+vlan 80
+  name DATA_VLAN_8
+  state active
+
+vlan 85
+  name VOICE_VLAN_8
+  state active
+
+vlan 208
+  name MGMT_VLAN_8
+  state active
+
+! VRF configuration (if applicable)
+! No VRF configuration for this switch
+
+! Interface configurations
+interface mgmt0
+  description Management Interface
+  ip address 192.168.100.17/24
+  vrf member management
+  no shutdown
+
+interface Ethernet1/1
+  description Uplink to Core
+  switchport mode trunk
+  switchport trunk allowed vlan 80,85
+  switchport trunk native vlan 999
+  no shutdown
+
+interface Ethernet1/2
+  description Uplink to Core - Backup
+  switchport mode trunk
+  switchport trunk allowed vlan 80,85
+  switchport trunk native vlan 999
+  no shutdown
+
+! Access port configurations
+
+interface Ethernet1/45
+  description Access Port 45
+  switchport mode access
+  switchport access vlan 80
+  switchport voice vlan 85
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/46
+  description Access Port 46
+  switchport mode access
+  switchport access vlan 80
+  switchport voice vlan 85
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/47
+  description Access Port 47
+  switchport mode access
+  switchport access vlan 80
+  switchport voice vlan 85
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/48
+  description Access Port 48
+  switchport mode access
+  switchport access vlan 80
+  switchport voice vlan 85
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/49
+  description Access Port 49
+  switchport mode access
+  switchport access vlan 80
+  switchport voice vlan 85
+  spanning-tree port type edge
+  no shutdown
+
+! SVI configurations
+interface Vlan80
+  description Data VLAN SVI
+  ip address 10.8.10.1/24
+  no shutdown
+
+interface Vlan85
+  description Voice VLAN SVI
+  ip address 10.8.15.1/24
+  no shutdown
+
+! Routing configuration
+router bgp 65008
+  router-id 10.8.10.1
+  bestpath as-path multipath-relax
+  address-family ipv4 unicast
+    maximum-paths 4
+
+! Global settings
+spanning-tree mode rapid-pvst
+spanning-tree vlan 80 priority 8192
+spanning-tree vlan 85 priority 8192
+
+! Logging
+logging server 192.168.1.200 6
+logging timestamp microseconds
+
+! SNMP
+snmp-server community public ro
+snmp-server location "Switch 8 Location"
+snmp-server contact "Network Team"
+
+! NTP
+ntp server 192.168.1.10 prefer
+ntp server 192.168.1.11
+
+! End of configuration

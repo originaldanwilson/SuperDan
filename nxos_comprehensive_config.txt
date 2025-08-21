@@ -1,0 +1,288 @@
+! Comprehensive NX-OS Configuration Sample
+! This demonstrates ALL types of configuration sections
+
+! ===============================
+! GLOBAL CONFIGURATIONS
+! ===============================
+hostname NXOS-ENHANCED-DEMO
+clock timezone EST -5 0
+clock summer-time EDT recurring
+ip domain-name example.com
+ip name-server 8.8.8.8 8.8.4.4
+
+! ===============================
+! FEATURE ENABLEMENT
+! ===============================
+feature bgp
+feature ospf
+feature pim
+feature interface-vlan
+feature lacp
+feature vpc
+feature lldp
+
+! ===============================
+! VLAN CONFIGURATIONS
+! ===============================
+vlan 10
+  name DATA_VLAN
+  state active
+
+vlan 20
+  name VOICE_VLAN
+  state active
+
+vlan 30
+  name MANAGEMENT_VLAN
+  state active
+
+vlan 100
+  name SERVER_VLAN
+  state active
+
+vlan 200
+  name DMZ_VLAN
+  state active
+
+vlan 999
+  name NATIVE_VLAN
+  state active
+
+! ===============================
+! VRF CONFIGURATIONS
+! ===============================
+vrf context management
+  ip route 0.0.0.0/0 192.168.1.1
+
+vrf context PROD
+  rd 65001:100
+  address-family ipv4 unicast
+    route-target import 65001:100
+    route-target export 65001:100
+
+vrf context DEV
+  rd 65001:200
+  address-family ipv4 unicast
+    route-target import 65001:200
+    route-target export 65001:200
+
+! ===============================
+! INTERFACE CONFIGURATIONS
+! ===============================
+interface mgmt0
+  description Management Interface
+  ip address 192.168.1.100/24
+  vrf member management
+  no shutdown
+
+interface Ethernet1/1
+  description Uplink to Core Switch
+  switchport mode trunk
+  switchport trunk allowed vlan 10,20,30,100,200
+  switchport trunk native vlan 999
+  channel-group 1 mode active
+  no shutdown
+
+interface Ethernet1/2
+  description Uplink to Core Switch
+  switchport mode trunk
+  switchport trunk allowed vlan 10,20,30,100,200
+  switchport trunk native vlan 999
+  channel-group 1 mode active
+  no shutdown
+
+interface port-channel1
+  description Port-Channel to Core
+  switchport mode trunk
+  switchport trunk allowed vlan 10,20,30,100,200
+  switchport trunk native vlan 999
+  vpc 1
+  no shutdown
+
+interface Ethernet1/10
+  description Access Port - Data
+  switchport mode access
+  switchport access vlan 10
+  spanning-tree port type edge
+  no shutdown
+
+interface Ethernet1/11
+  description Access Port - Voice
+  switchport mode access
+  switchport access vlan 10
+  switchport voice vlan 20
+  spanning-tree port type edge
+  no shutdown
+
+interface Ethernet1/12
+  description Server Port
+  switchport mode access
+  switchport access vlan 100
+  spanning-tree port type edge
+  no shutdown
+
+interface Vlan10
+  description Data VLAN SVI
+  ip address 10.0.10.1/24
+  vrf member PROD
+  no shutdown
+
+interface Vlan20
+  description Voice VLAN SVI
+  ip address 10.0.20.1/24
+  vrf member PROD
+  no shutdown
+
+interface Vlan100
+  description Server VLAN SVI
+  ip address 10.0.100.1/24
+  vrf member PROD
+  no shutdown
+
+interface loopback0
+  description Loopback Interface
+  ip address 10.255.255.1/32
+
+! ===============================
+! ROUTING CONFIGURATIONS
+! ===============================
+router ospf UNDERLAY
+  router-id 10.255.255.1
+  area 0.0.0.0 authentication message-digest
+
+router bgp 65001
+  router-id 10.255.255.1
+  bestpath as-path multipath-relax
+  address-family ipv4 unicast
+    redistribute ospf UNDERLAY route-map OSPF-TO-BGP
+    maximum-paths 4
+  neighbor 10.255.255.2
+    remote-as 65001
+    update-source loopback0
+    address-family ipv4 unicast
+      next-hop-self
+
+! ===============================
+! ROUTE MAP CONFIGURATIONS
+! ===============================
+route-map OSPF-TO-BGP permit 10
+  match ip address prefix-list REDISTRIBUTE-OSPF
+
+route-map ALLOW-ALL permit 10
+
+! ===============================
+! PREFIX LIST CONFIGURATIONS
+! ===============================
+ip prefix-list REDISTRIBUTE-OSPF seq 10 permit 10.0.0.0/16 le 24
+ip prefix-list REDISTRIBUTE-OSPF seq 20 permit 192.168.0.0/16 le 24
+
+! ===============================
+! ACCESS LIST CONFIGURATIONS
+! ===============================
+ip access-list DATA-ACL
+  10 permit ip 10.0.10.0/24 10.0.100.0/24
+  20 permit ip 10.0.10.0/24 10.0.200.0/24
+  30 deny ip 10.0.10.0/24 any log
+  40 permit ip any any
+
+ip access-list VOICE-ACL
+  10 permit ip 10.0.20.0/24 any
+  20 deny ip any 10.0.20.0/24 log
+
+ip access-list MANAGEMENT-ACL
+  10 permit tcp 192.168.1.0/24 any eq ssh
+  20 permit tcp 192.168.1.0/24 any eq https
+  30 permit icmp any any
+  40 deny ip any any log
+
+! ===============================
+! QoS CONFIGURATIONS
+! ===============================
+class-map type qos match-all VOICE-CLASS
+  match dscp ef
+
+class-map type qos match-all DATA-CLASS
+  match dscp af21
+
+class-map type qos match-all BEST-EFFORT
+  match dscp default
+
+policy-map type qos INGRESS-POLICY
+  class VOICE-CLASS
+    set qos-group 1
+    police cir 128 kbps bc 8000 bytes conform transmit exceed drop
+  class DATA-CLASS
+    set qos-group 2
+    police cir 1 gbps bc 1000000 bytes conform transmit exceed markdown-dscp
+  class BEST-EFFORT
+    set qos-group 3
+
+policy-map type qos EGRESS-POLICY
+  class type qos VOICE-CLASS
+    priority level 1
+    shape average 256 kbps
+  class type qos DATA-CLASS
+    bandwidth remaining percent 60
+    shape average 2 gbps
+  class type qos BEST-EFFORT
+    bandwidth remaining percent 20
+
+! ===============================
+! SPANNING TREE CONFIGURATIONS
+! ===============================
+spanning-tree mode rapid-pvst
+spanning-tree port type edge bpduguard default
+spanning-tree port type network default
+spanning-tree vlan 10 priority 4096
+spanning-tree vlan 20 priority 4096
+spanning-tree vlan 100 priority 8192
+
+! ===============================
+! VPC CONFIGURATIONS
+! ===============================
+vpc domain 1
+  peer-switch
+  role priority 1000
+  peer-keepalive destination 192.168.1.101 source 192.168.1.100 vrf management
+  peer-gateway
+  auto-recovery
+
+! ===============================
+! PORT-CHANNEL LOAD BALANCING
+! ===============================
+port-channel load-balance src-dst-ip-l4port
+
+! ===============================
+! LOGGING AND MONITORING
+! ===============================
+logging level ospf 6
+logging level bgp 6
+logging server 192.168.1.200 6 facility local6
+logging timestamp microseconds
+
+! ===============================
+! SNMP CONFIGURATIONS
+! ===============================
+snmp-server community public ro
+snmp-server community private rw
+snmp-server location "Data Center Rack 1"
+snmp-server contact "Network Team <network@example.com>"
+
+! ===============================
+! NTP CONFIGURATIONS
+! ===============================
+ntp server 192.168.1.10 prefer
+ntp server 192.168.1.11
+ntp master 3
+
+! ===============================
+! ADDITIONAL GLOBAL SETTINGS
+! ===============================
+ip route 0.0.0.0/0 192.168.1.1 vrf management
+line console
+  exec-timeout 30
+line vty
+  exec-timeout 30
+  access-class MANAGEMENT-ACL in
+
+! End of Configuration

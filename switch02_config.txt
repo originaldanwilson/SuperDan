@@ -1,0 +1,129 @@
+! Configuration for NXOS-SW02
+! IP: 192.168.1.11
+
+hostname NXOS-SW02
+clock timezone EST -5 0
+ip domain-name example.com
+
+! Enable features
+feature bgp
+feature ospf
+feature interface-vlan
+feature lacp
+feature vpc
+feature lldp
+
+! VLAN configuration
+vlan 20
+  name DATA_VLAN_2
+  state active
+
+vlan 25
+  name VOICE_VLAN_2
+  state active
+
+vlan 202
+  name MGMT_VLAN_2
+  state active
+
+! VRF configuration (if applicable)
+vrf context PROD_2
+  rd 65001:102
+  address-family ipv4 unicast
+    route-target import 65001:102
+    route-target export 65001:102
+
+! Interface configurations
+interface mgmt0
+  description Management Interface
+  ip address 192.168.100.11/24
+  vrf member management
+  no shutdown
+
+interface Ethernet1/1
+  description Uplink to Core
+  switchport mode trunk
+  switchport trunk allowed vlan 20,25
+  switchport trunk native vlan 999
+  no shutdown
+
+interface Ethernet1/2
+  description Uplink to Core - Backup
+  switchport mode trunk
+  switchport trunk allowed vlan 20,25
+  switchport trunk native vlan 999
+  no shutdown
+
+! Access port configurations
+
+interface Ethernet1/15
+  description Access Port 15
+  switchport mode access
+  switchport access vlan 20
+  switchport voice vlan 25
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/16
+  description Access Port 16
+  switchport mode access
+  switchport access vlan 20
+  switchport voice vlan 25
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/17
+  description Access Port 17
+  switchport mode access
+  switchport access vlan 20
+  switchport voice vlan 25
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/18
+  description Access Port 18
+  switchport mode access
+  switchport access vlan 20
+  switchport voice vlan 25
+  spanning-tree port type edge
+  no shutdown
+interface Ethernet1/19
+  description Access Port 19
+  switchport mode access
+  switchport access vlan 20
+  switchport voice vlan 25
+  spanning-tree port type edge
+  no shutdown
+
+! SVI configurations
+interface Vlan20
+  description Data VLAN SVI
+  ip address 10.2.10.1/24
+  no shutdown
+
+interface Vlan25
+  description Voice VLAN SVI
+  ip address 10.2.15.1/24
+  no shutdown
+
+! Routing configuration
+router ospf UNDERLAY_2
+  router-id 10.2.10.1
+  area 0.0.0.2 authentication message-digest
+
+! Global settings
+spanning-tree mode rapid-pvst
+spanning-tree vlan 20 priority 4096
+spanning-tree vlan 25 priority 4096
+
+! Logging
+logging server 192.168.1.200 6
+logging timestamp microseconds
+
+! SNMP
+snmp-server community public ro
+snmp-server location "Switch 2 Location"
+snmp-server contact "Network Team"
+
+! NTP
+ntp server 192.168.1.10 prefer
+ntp server 192.168.1.11
+
+! End of configuration

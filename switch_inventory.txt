@@ -1,0 +1,15 @@
+# NX-OS Switch Inventory
+# Generated automatically by setup_multi_device_config.py
+
+Device IP       | Hostname      | Config File           | Management IP    | Data VLAN | Voice VLAN
+----------------|---------------|----------------------|------------------|-----------|------------
+192.168.1.10    | NXOS-SW01     | switch01_config.txt  | 192.168.100.10  | 10        | 15
+192.168.1.11    | NXOS-SW02     | switch02_config.txt  | 192.168.100.11  | 20        | 25
+192.168.1.12    | NXOS-SW03     | switch03_config.txt  | 192.168.100.12  | 30        | 35
+192.168.1.13    | NXOS-SW04     | switch04_config.txt  | 192.168.100.13  | 40        | 45
+192.168.1.14    | NXOS-SW05     | switch05_config.txt  | 192.168.100.14  | 50        | 55
+192.168.1.15    | NXOS-SW06     | switch06_config.txt  | 192.168.100.15  | 60        | 65
+192.168.1.16    | NXOS-SW07     | switch07_config.txt  | 192.168.100.16  | 70        | 75
+192.168.1.17    | NXOS-SW08     | switch08_config.txt  | 192.168.100.17  | 80        | 85
+192.168.1.18    | NXOS-SW09     | switch09_config.txt  | 192.168.100.18  | 90        | 95
+192.168.1.19    | NXOS-SW10     | switch10_config.txt  | 192.168.100.19  | 100       | 105
