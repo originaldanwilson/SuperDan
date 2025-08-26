@@ -86,6 +86,7 @@ def get_netmiko_device_config(hostname, device_type="cisco_ios", timeout_multipl
 import logging
 import os
 import sys
+import stat
 from datetime import datetime
 
 
@@ -136,6 +137,172 @@ def setupLogging(log_level=logging.INFO, log_file=None):
     logger = logging.getLogger(__name__)
     logger.info(f"Logging initialized. Log file: {log_path}")
     return logger
+
+
+def set_file_permissions(file_path, permissions=0o777):
+    """
+    Set file permissions for a given file.
+    
+    Args:
+        file_path (str): Path to the file
+        permissions (int): Octal permissions (default: 0o777 for full access)
+    
+    Returns:
+        bool: True if successful, False otherwise
+    
+    Example:
+        set_file_permissions("myfile.xlsx", 0o777)
+        set_file_permissions("myfile.xlsx", 0o644)  # rw-r--r--
+    """
+    try:
+        os.chmod(file_path, permissions)
+        return True
+    except (OSError, IOError) as e:
+        print(f"Error setting permissions for {file_path}: {e}")
+        return False
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return False
+
+
+def get_file_permissions_string(file_path):
+    """
+    Get file permissions as a human-readable string (like ls -l output).
+    
+    Args:
+        file_path (str): Path to the file
+    
+    Returns:
+        str: Permission string (e.g., 'rwxrwxrwx') or None if error
+    """
+    try:
+        file_stat = os.stat(file_path)
+        mode = file_stat.st_mode
+        
+        # Convert to permission string
+        perms = stat.filemode(mode)
+        return perms[1:]  # Remove the first character (file type indicator)
+    except (OSError, IOError, FileNotFoundError) as e:
+        print(f"Error getting permissions for {file_path}: {e}")
+        return None
+
+
+def get_file_permissions_octal(file_path):
+    """
+    Get file permissions as an octal string.
+    
+    Args:
+        file_path (str): Path to the file
+    
+    Returns:
+        str: Octal permission string (e.g., '755') or None if error
+    """
+    try:
+        file_stat = os.stat(file_path)
+        mode = file_stat.st_mode
+        
+        # Get the last 3 octal digits (permission bits)
+        octal_perms = oct(stat.S_IMODE(mode))[2:]
+        return octal_perms
+    except (OSError, IOError, FileNotFoundError) as e:
+        print(f"Error getting permissions for {file_path}: {e}")
+        return None
+
+
+def print_file_with_permissions(file_path, show_size=True, show_timestamp=True):
+    """
+    Print file information including permissions (similar to ls -l).
+    
+    Args:
+        file_path (str): Path to the file
+        show_size (bool): Whether to show file size
+        show_timestamp (bool): Whether to show modification timestamp
+    
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if not os.path.exists(file_path):
+            print(f"File not found: {file_path}")
+            return False
+        
+        file_stat = os.stat(file_path)
+        
+        # Get permission string
+        perms = stat.filemode(file_stat.st_mode)
+        
+        # Get octal permissions
+        octal_perms = oct(stat.S_IMODE(file_stat.st_mode))[2:]
+        
+        # Prepare output components
+        components = [perms]
+        
+        if show_size:
+            # Format file size
+            size = file_stat.st_size
+            if size < 1024:
+                size_str = f"{size}B"
+            elif size < 1024 * 1024:
+                size_str = f"{size / 1024:.1f}KB"
+            elif size < 1024 * 1024 * 1024:
+                size_str = f"{size / (1024 * 1024):.1f}MB"
+            else:
+                size_str = f"{size / (1024 * 1024 * 1024):.1f}GB"
+            components.append(f"{size_str:>8}")
+        
+        if show_timestamp:
+            # Format modification time
+            mod_time = datetime.fromtimestamp(file_stat.st_mtime)
+            time_str = mod_time.strftime("%b %d %H:%M")
+            components.append(time_str)
+        
+        # Add octal permissions in parentheses
+        components.append(f"({octal_perms})")
+        
+        # Add filename
+        components.append(os.path.basename(file_path))
+        
+        # Print the formatted line
+        print(" ".join(components))
+        return True
+        
+    except (OSError, IOError) as e:
+        print(f"Error accessing {file_path}: {e}")
+        return False
+
+
+def save_file_and_set_permissions(file_path, permissions=0o777, show_info=True):
+    """
+    Convenience function to set permissions on a file and optionally display the result.
+    Useful for Excel files and other saved files.
+    
+    Args:
+        file_path (str): Path to the file
+        permissions (int): Octal permissions (default: 0o777)
+        show_info (bool): Whether to print file info after setting permissions
+    
+    Returns:
+        bool: True if successful, False otherwise
+    
+    Example:
+        # After saving an Excel file
+        save_file_and_set_permissions("report.xlsx")
+        save_file_and_set_permissions("report.xlsx", 0o644, show_info=True)
+    """
+    if not os.path.exists(file_path):
+        print(f"File not found: {file_path}")
+        return False
+    
+    # Set permissions
+    success = set_file_permissions(file_path, permissions)
+    
+    if success and show_info:
+        print(f"File saved with permissions:")
+        print_file_with_permissions(file_path)
+    elif success:
+        print(f"Permissions set successfully for {file_path}")
+    
+    return success
 
 
 if __name__ == "__main__":
