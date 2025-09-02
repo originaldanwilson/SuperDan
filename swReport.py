@@ -4,74 +4,78 @@ import sys
 import urllib.parse
 import webbrowser
 import requests
-import json
 from tools import get_ad_creds
 
-SWIS_JSON = "/SolarWinds/InformationService/v3/Json/Query"
+# Hard-coded endpoints
+DEFAULT_SWIS = "https://orionApi.company.com:17774"
+DEFAULT_WEB  = "https://orion.company.com"
+SWIS_QUERY_PATH = "/SolarWinds/InformationService/v3/Json/Query"
 
-def swis_query(base_swis_url: str, user: str, pwd: str, swql: str, params: dict):
-    url = base_swis_url.rstrip("/") + SWIS_JSON
-    payload = {"query": swql, "parameters": params}
-    r = requests.post(
-        url,
-        headers={"Content-Type": "application/json"},
-        data=json.dumps(payload),
-        auth=(user, pwd),
-        verify=False
-    )
+def swisGet(baseUrl: str, user: str, pwd: str, swql: str, timeout: int = 30, verifySsl: bool = False):
+    url = baseUrl.rstrip("/") + SWIS_QUERY_PATH
+    r = requests.get(url, params={"query": swql}, auth=(user, pwd), timeout=timeout, verify=verifySsl)
     r.raise_for_status()
-    return r.json().get("results", [])
+    data = r.json()
+    return data.get("results", data.get("Results", []))
 
-def resolve_node_id(base_swis_url: str, user: str, pwd: str, hostname: str) -> int:
-    swql = """
-    SELECT TOP 1 NodeID
-    FROM Orion.Nodes
-    WHERE Caption=@name OR DNS=@name OR IPAddress=@name
-    """
-    res = swis_query(base_swis_url, user, pwd, swql, {"name": hostname})
+def resolveNodeId(baseUrl: str, user: str, pwd: str, host: str) -> int:
+    # Match by Caption, DNS, or IP
+    hostEsc = host.replace("'", "''")
+    swql = (
+        "SELECT TOP 1 NodeID "
+        "FROM Orion.Nodes "
+        f"WHERE Caption='{hostEsc}' OR DNS='{hostEsc}' OR IPAddress='{hostEsc}'"
+    )
+    res = swisGet(baseUrl, user, pwd, swql)
     if not res:
-        raise RuntimeError(f"No node match for '{hostname}'")
+        raise RuntimeError(f"No node match for '{host}'")
     return int(res[0]["NodeID"])
 
-def resolve_interface_id(base_swis_url: str, user: str, pwd: str, node_id: int, if_name: str) -> int:
-    swql = """
-    SELECT InterfaceID, Name, Caption
-    FROM Orion.NPM.Interfaces
-    WHERE NodeID=@nid AND (Name LIKE @needle OR Caption LIKE @needle)
-    """
-    res = swis_query(base_swis_url, user, pwd, swql, {"nid": node_id, "needle": f"%{if_name}%"})
+def resolveInterfaceId(baseUrl: str, user: str, pwd: str, nodeId: int, iface: str) -> int:
+    # Prefer exact (case-insensitive) Name/Caption; else first LIKE match
+    needle = iface.replace("'", "''")
+    swql = (
+        "SELECT InterfaceID, Name, Caption "
+        "FROM Orion.NPM.Interfaces "
+        f"WHERE NodeID={nodeId} AND (Name LIKE '%{needle}%' OR Caption LIKE '%{needle}%') "
+        "ORDER BY Name"
+    )
+    res = swisGet(baseUrl, user, pwd, swql)
     if not res:
-        raise RuntimeError(f"No interface match containing '{if_name}' on NodeID {node_id}")
+        raise RuntimeError(f"No interface containing '{iface}' on NodeID {nodeId}")
+    for row in res:
+        n = (row.get("Name") or "").lower()
+        c = (row.get("Caption") or "").lower()
+        if n == iface.lower() or c == iface.lower():
+            return int(row["InterfaceID"])
     return int(res[0]["InterfaceID"])
 
-def build_perfstack_url(base_web_url: str, iface_id: int, preset_time: str) -> str:
-    # PerfStack metrics: In and Out bps
+def buildPerfstackUrl(interfaceId: int, preset: str) -> str:
     metrics = [
-        f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
-        f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps",
+        f"Orion.NPM.Interfaces_{interfaceId}-Orion.NPM.InterfaceTraffic.InAveragebps",
+        f"Orion.NPM.Interfaces_{interfaceId}-Orion.NPM.InterfaceTraffic.OutAveragebps",
     ]
-    charts = "0_" + ",".join(metrics) + ";"
-    q = {
-        "presetTime": preset_time,
-        "charts": charts
-    }
-    return base_web_url.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(q)
+    chartsVal = "0_" + ",".join(metrics) + ";"
+    qs = {"presetTime": preset, "charts": chartsVal}
+    return DEFAULT_WEB.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(qs)
 
 def main():
-    ap = argparse.ArgumentParser(description="Open a SolarWinds PerfStack chart for an interface.")
-    ap.add_argument("--host", required=True, help="Hostname/DNS/IP as it appears in SolarWinds.")
-    ap.add_argument("--interface", required=True, help="Interface name/caption.")
-    ap.add_argument("--webBase", default="https://orion.company.com", help="Base URL for SolarWinds web.")
-    ap.add_argument("--swisBase", default="https://orion.company.com:17778", help="Base URL for SWIS REST.")
+    ap = argparse.ArgumentParser(description="Open a PerfStack chart for an interface (SWIS on 17774).")
+    ap.add_argument("--host", required=True, help="Hostname/DNS/IP as shown in Orion.")
+    ap.add_argument("--interface", required=True, help="Interface name/caption (e.g. Ethernet1/1).")
     ap.add_argument("--preset", default="last7days", help="PerfStack presetTime (e.g. last7days, last24hours).")
+    ap.add_argument("--verifySSL", action="store_true", help="Enable TLS verification (default off).")
+    ap.add_argument("--timeout", type=int, default=30, help="HTTP timeout seconds.")
     args = ap.parse_args()
 
-    username, password = get_ad_creds()
+    user, pwd = get_ad_creds()
+    if not args.verifySSL:
+        requests.packages.urllib3.disable_warnings()
 
     try:
-        node_id = resolve_node_id(args.swisBase, username, password, args.host)
-        iface_id = resolve_interface_id(args.swisBase, username, password, node_id, args.interface)
-        url = build_perfstack_url(args.webBase, iface_id, args.preset)
+        nodeId = resolveNodeId(DEFAULT_SWIS, user, pwd, args.host)
+        ifaceId = resolveInterfaceId(DEFAULT_SWIS, user, pwd, nodeId, args.interface)
+        url = buildPerfstackUrl(ifaceId, args.preset)
         print(f"Opening: {url}")
         webbrowser.open(url)
     except Exception as e:
@@ -79,5 +83,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    requests.packages.urllib3.disable_warnings()
     main()
