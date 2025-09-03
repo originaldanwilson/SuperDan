@@ -11,7 +11,7 @@ DEFAULT_WEB  = "https://orion.company.com"
 SWIS_QUERY_PATH = "/SolarWinds/InformationService/v3/Json/Query"
 
 DEFAULT_BROWSER = "msedge"       # default system browser (use --browser chrome to switch)
-DEFAULT_STATE   = "state.json"   # cookie storage file
+DEFAULT_STATE   = "state.json"   # cookie storage file when NOT using userDataDir
 
 # ---------- SWIS helpers ----------
 def swis_get(base_url, user, pwd, swql):
@@ -69,46 +69,56 @@ def build_login_url(perf_url):
     return f"{base}/Orion/Login.aspx?ReturnUrl={urllib.parse.quote(path_q, safe='')}"
 
 # ---------- Playwright capture ----------
-async def capture(login_url, perf_url, outfile, headed, state_path, browser_channel):
+async def capture(login_url, perf_url, outfile, headed, state_path, browser_channel, user_data_dir=None):
     from pathlib import Path
     from playwright.async_api import async_playwright
 
     async with async_playwright() as p:
-        # Launch installed Edge/Chrome by channel (no playwright download needed)
-        browser = await p.chromium.launch(channel=browser_channel, headless=(not headed))
+        if user_data_dir:
+            # Persistent profile: most reliable for SSO/IWA. No state.json, no storage clearing.
+            browser = await p.chromium.launch_persistent_context(
+                user_data_dir=user_data_dir,
+                channel=browser_channel,
+                headless=(not headed),
+                viewport={"width": 1600, "height": 900},
+                ignore_https_errors=True,
+                args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-dev-shm-usage"],
+            )
+            page = await browser.new_page()
+            # Go to login with ReturnUrl, then the exact PerfStack URL (includes timeFrom/timeTo)
+            await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
+            await page.goto(perf_url,  wait_until="domcontentloaded", timeout=45000)
+            await page.wait_for_load_state("networkidle", timeout=45000)
+            try: await page.wait_for_selector("canvas, svg", timeout=15000)
+            except Exception: pass
+            await page.screenshot(path=outfile, full_page=True)
+            await browser.close()
+            return
 
-        # Reuse cookies if present
+        # Non-persistent: use state.json
+        browser = await p.chromium.launch(channel=browser_channel, headless=(not headed))
         ctx_args = {"viewport": {"width": 1600, "height": 900}, "ignore_https_errors": True}
         sp = Path(state_path).expanduser().resolve()
         if sp.exists():
             ctx_args["storage_state"] = str(sp)
-
         context = await browser.new_context(**ctx_args)
         page = await context.new_page()
-
         # Clear sticky UI so URL timeFrom/timeTo is honored
         await page.goto("about:blank")
         try:
             await page.evaluate("localStorage.clear(); sessionStorage.clear();")
         except Exception:
             pass
-
-        # Navigate via Login.aspx?ReturnUrl=... then always to exact PerfStack URL
         await page.goto(login_url, wait_until="domcontentloaded", timeout=45000)
         await page.goto(perf_url,  wait_until="domcontentloaded", timeout=45000)
-
         await page.wait_for_load_state("networkidle", timeout=45000)
         try:
             await page.wait_for_selector("canvas, svg", timeout=15000)
         except Exception:
             pass
-
         await page.screenshot(path=outfile, full_page=True)
-
-        # Save cookies for next run
         sp.parent.mkdir(parents=True, exist_ok=True)
         await context.storage_state(path=str(sp))
-
         await context.close()
         await browser.close()
 
@@ -119,12 +129,12 @@ def main():
     parser.add_argument("--interface", required=True, help="Interface name/caption (e.g., Ethernet1/1).")
     parser.add_argument("--hours", type=int, default=168, help="Time window in hours (default 168 = 7 days).")
     parser.add_argument("--outfile", default="perfstack.png", help="Base output filename (timestamp appended).")
-    parser.add_argument("--headed", action="store_true", help="Show the browser window (use on first run to sign in).")
+    parser.add_argument("--headed", action="store_true", help="Show the browser window (recommended for first login).")
     parser.add_argument("--browser", choices=["msedge", "chrome"], default=DEFAULT_BROWSER,
                         help="Installed browser to use (default: msedge).")
+    parser.add_argument("--userDataDir", help="Use a persistent browser profile at this path (best for SSO).")
     args = parser.parse_args()
 
-    # Basic: trust self-signed SWIS certs
     requests.packages.urllib3.disable_warnings()
 
     # 1) Resolve IDs via SWIS with your AD creds
@@ -137,20 +147,24 @@ def main():
     perf_url  = build_perfstack_url(iface_id, t_from, t_to)
     login_url = build_login_url(perf_url)
 
-    # 3) Make timestamped filename automatically
+    # 3) Make timestamped filename
     stem, ext = os.path.splitext(args.outfile)
     stamped_out = f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
 
-    print(f"Opening PerfStack → {perf_url}  (browser: {args.browser})")
+    print(f"Opening PerfStack → {perf_url}  (browser: {args.browser}, headed: {args.headed})")
     asyncio.run(capture(
         login_url=login_url,
         perf_url=perf_url,
         outfile=stamped_out,
         headed=args.headed,
         state_path=DEFAULT_STATE,
-        browser_channel=args.browser
+        browser_channel=args.browser,
+        user_data_dir=args.userDataDir
     ))
-    print(f"Saved screenshot: {stamped_out}\nCookies saved in {DEFAULT_STATE}")
+    if args.userDataDir:
+        print(f"Saved screenshot: {stamped_out}\nProfile persisted in: {args.userDataDir}")
+    else:
+        print(f"Saved screenshot: {stamped_out}\nCookies saved in {DEFAULT_STATE}")
 
 if __name__ == "__main__":
     main()
