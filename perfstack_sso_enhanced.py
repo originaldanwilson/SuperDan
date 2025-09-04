@@ -2,6 +2,12 @@
 """
 Enhanced SolarWinds PerfStack SSO Handler
 Improved version with multiple SSO authentication methods
+
+NOTE: This script has known issues after format updates.
+USE INSTEAD:
+- perfstack_simple.py (recommended)
+- perfstack_windows.py (with file output options) 
+- perfstackAttachShot.py (with screenshot capture)
 """
 
 import argparse
