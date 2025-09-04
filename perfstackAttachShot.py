@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Attach to a running Chrome/Edge (CDP) and screenshot a SolarWinds PerfStack view
-Updated with working SolarWinds format: presetTime=last7Days and proper chart format
+Launch browser and screenshot SolarWinds PerfStack with working format
+No CDP attachment needed - launches its own browser window
+Uses proven working format: presetTime=last7Days with proper chart format
 """
 import argparse, asyncio, urllib.parse, os, ipaddress, requests
 from datetime import datetime
@@ -102,32 +103,86 @@ def build_perfstack_url(web_base, iface_id, hours):
     
     return web_base.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(params)
 
-async def attach_and_shot(cdp_url, target_url, outfile, width=1600, height=900):
+def build_login_url(web_base, perfstack_url):
+    """Build login URL with return path"""
+    base = web_base.rstrip("/")
+    if perfstack_url.startswith(base):
+        path_query = perfstack_url[len(base):]
+    else:
+        path_query = perfstack_url
+    
+    return f"{base}/Orion/Login.aspx?ReturnUrl={urllib.parse.quote(path_query, safe='')}"
+
+async def screenshot_perfstack(login_url, perfstack_url, outfile, width=1600, height=900, headless=True):
+    """Launch new browser, login, and take PerfStack screenshot"""
     from playwright.async_api import async_playwright
+    
     async with async_playwright() as p:
-        browser = await p.chromium.connect_over_cdp(cdp_url)
-        ctx = browser.contexts[0] if browser.contexts else await browser.new_context(
+        # Launch new browser instance
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=[
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-dev-shm-usage',
+                '--ignore-certificate-errors',
+                '--ignore-ssl-errors'
+            ]
+        )
+        
+        context = await browser.new_context(
             viewport={"width": width, "height": height},
             ignore_https_errors=True
         )
-        page = await ctx.new_page()
-        # Go to the exact PerfStack URL (explicit timeFrom/timeTo)
-        await page.goto(target_url, wait_until="domcontentloaded", timeout=60000)
-        await page.wait_for_load_state("networkidle", timeout=60000)
+        
+        page = await context.new_page()
+        
         try:
-            await page.wait_for_selector("canvas, svg", timeout=20000)
-        except:
-            pass
-        await page.screenshot(path=outfile, full_page=True)
-        await browser.close()  # only detaches; the real browser stays open
+            # Navigate to login URL first
+            print(f"🔑 Navigating to login page...")
+            await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+            
+            # Wait for user to login (check for SolarWinds elements)
+            print(f"⏳ Waiting for login... (you may need to authenticate manually)")
+            
+            # Try to detect if we're logged in by looking for SolarWinds elements
+            try:
+                await page.wait_for_selector(".sw-header, .orion-header, #main-content", timeout=30000)
+                print(f"✅ Login detected, proceeding to PerfStack...")
+            except:
+                print(f"⚠️  Login timeout - continuing anyway...")
+            
+            # Navigate to PerfStack URL
+            print(f"📊 Loading PerfStack...")
+            await page.goto(perfstack_url, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_load_state("networkidle", timeout=60000)
+            
+            # Wait for chart elements to load
+            print(f"📊 Waiting for charts to load...")
+            try:
+                await page.wait_for_selector("canvas, svg, .chart", timeout=30000)
+                # Additional wait for chart rendering
+                await asyncio.sleep(3)
+                print(f"✅ Charts loaded")
+            except:
+                print(f"⚠️  Chart loading timeout - taking screenshot anyway...")
+            
+            # Take screenshot
+            print(f"📷 Taking screenshot...")
+            await page.screenshot(path=outfile, full_page=True)
+            
+        finally:
+            await browser.close()
 
 def main():
-    ap = argparse.ArgumentParser(description="Attach to a running Chrome/Edge (CDP) and screenshot PerfStack.")
+    ap = argparse.ArgumentParser(description="Launch browser and screenshot SolarWinds PerfStack with working format.")
     ap.add_argument("--host", required=True, help="Hostname/DNS/IP in Orion (IP is most reliable).")
     ap.add_argument("--interface", required=True, help="Interface name/caption (e.g. Ethernet1/1).")
     ap.add_argument("--hours", type=int, default=168, help="Time window in hours (default 168=7 days).")
     ap.add_argument("--outfile", default="perfstack.png", help="Base output file name (timestamp appended).")
-    ap.add_argument("--cdp", default="http://localhost:9222", help="CDP endpoint from --remote-debugging-port.")
+    ap.add_argument("--headed", action="store_true", help="Show browser window (useful for login/debugging).")
+    ap.add_argument("--width", type=int, default=1600, help="Browser window width (default: 1600).")
+    ap.add_argument("--height", type=int, default=900, help="Browser window height (default: 900).")
     args = ap.parse_args()
 
     requests.packages.urllib3.disable_warnings()
@@ -142,19 +197,24 @@ def main():
     print(f"   InterfaceID: {iface_id}")
     
     print(f"🕐 Building PerfStack URL for {args.hours} hours...")
-    url = build_perfstack_url(DEFAULT_WEB, iface_id, args.hours)
-
+    perfstack_url = build_perfstack_url(DEFAULT_WEB, iface_id, args.hours)
+    login_url = build_login_url(DEFAULT_WEB, perfstack_url)
+    
     stem, ext = os.path.splitext(args.outfile)
     stamped = f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
     
     print()
-    print(f"📷 Taking screenshot...")
-    print(f"   CDP: {args.cdp}")
-    print(f"   URL: {url}")
-    print(f"   File: {stamped}")
+    print(f"📷 Taking PerfStack screenshot...")
+    print(f"   PerfStack URL: {perfstack_url}")
+    print(f"   Login URL: {login_url}")
+    print(f"   Output file: {stamped}")
+    print(f"   Browser mode: {'headed' if args.headed else 'headless'}")
     print()
     
-    asyncio.run(attach_and_shot(args.cdp, url, stamped))
+    asyncio.run(screenshot_perfstack(
+        login_url, perfstack_url, stamped, 
+        args.width, args.height, headless=not args.headed
+    ))
     print(f"✅ Screenshot saved: {stamped}")
 
 if __name__ == "__main__":
