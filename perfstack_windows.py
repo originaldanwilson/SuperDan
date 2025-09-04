@@ -214,6 +214,11 @@ class WindowsPerfStackSolution:
         query_string = urllib.parse.urlencode(params, safe='-_,:;')
         full_url = base_url + query_string
         
+        # Debug the encoding
+        print(f"🔍 Debug encoding:")
+        print(f"   Raw query: {query_string}")
+        print(f"   Decoded: {urllib.parse.unquote(query_string)}")
+        
         print(f"🌐 Full URL: {full_url}")
         print()
         
