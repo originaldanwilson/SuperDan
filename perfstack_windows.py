@@ -92,12 +92,42 @@ class WindowsPerfStackSolution:
 
     def build_time_window(self, hours):
         """Build time window for PerfStack"""
-        end = datetime.now(timezone.utc)
-        start = end - timedelta(hours=hours)
-        return (
-            start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            end.strftime("%Y-%m-%dT%H:%M:%SZ")
-        )
+        # Get current time and ensure we have enough precision
+        now = datetime.now(timezone.utc)
+        
+        # Calculate start time - ensure it's significantly different from end
+        start = now - timedelta(hours=hours)
+        
+        # For very short time windows, ensure at least 1 minute difference
+        if hours < 1:
+            start = now - timedelta(hours=1)  # Minimum 1 hour window
+            hours = 1
+            print(f"⚠️  Adjusted to minimum 1-hour window")
+        
+        # Try different SolarWinds time formats (some versions are picky)
+        # Format 1: Full ISO with milliseconds
+        start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        end_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        
+        # Alternative format if the above doesn't work (uncomment if needed):
+        # start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
+        # end_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        
+        # Debug output
+        print(f"🕐 Time window calculation:")
+        print(f"   Start: {start_str} ({hours} hours ago)")
+        print(f"   End:   {end_str} (now)")
+        print(f"   Duration: {hours} hours")
+        
+        # Double-check times are different
+        if start_str == end_str:
+            print(f"⚠️  ERROR: Start and end times are still identical!")
+            # Force a different start time
+            start = now - timedelta(hours=hours, minutes=1)
+            start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            print(f"   Forced adjustment - Start: {start_str}")
+        
+        return (start_str, end_str)
 
     def build_perfstack_url(self, interface_id, time_from, time_to, metrics=None):
         """Build PerfStack URL with explicit time window"""
@@ -108,13 +138,28 @@ class WindowsPerfStackSolution:
             ]
         
         charts = "0_" + ",".join(metrics) + ";"
+        
+        # Debug the time parameters
+        print(f"🔗 URL parameters:")
+        print(f"   timeFrom: {time_from}")
+        print(f"   timeTo:   {time_to}")
+        print(f"   charts:   {charts}")
+        
         params = {
             "charts": charts,
             "timeFrom": time_from,
             "timeTo": time_to
         }
         
-        return self.web_base.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(params)
+        # Build URL with proper encoding
+        base_url = self.web_base.rstrip("/") + "/apps/perfstack/?"
+        query_string = urllib.parse.urlencode(params, safe='-_,:;')
+        full_url = base_url + query_string
+        
+        print(f"🌐 Full URL: {full_url}")
+        print()
+        
+        return full_url
 
     def build_login_url(self, return_url):
         """Build login URL with return path"""
@@ -459,5 +504,21 @@ Examples:
         sys.exit(1)
 
 
+def test_time_window():
+    """Test function to debug time window calculation"""
+    print("Testing time window calculation...")
+    sw = WindowsPerfStackSolution()
+    
+    for hours in [1, 24, 168]:
+        print(f"\nTesting {hours} hour window:")
+        start_str, end_str = sw.build_time_window(hours)
+        print(f"  Start: {start_str}")
+        print(f"  End:   {end_str}")
+        print(f"  Same?  {start_str == end_str}")
+
 if __name__ == "__main__":
-    main()
+    # Check if this is a test run
+    if len(sys.argv) > 1 and sys.argv[1] == '--test-time':
+        test_time_window()
+    else:
+        main()
