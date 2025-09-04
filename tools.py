@@ -102,7 +102,15 @@ import logging
 import os
 import sys
 import stat
+import pathlib
 from datetime import datetime
+
+# Optional screenshot support
+try:
+    import mss
+    import mss.tools
+except ImportError:
+    mss = None
 
 
 def getScriptName():
@@ -318,6 +326,41 @@ def save_file_and_set_permissions(file_path, permissions=0o777, show_info=True):
         print(f"Permissions set successfully for {file_path}")
     
     return success
+
+
+def take_screenshot(filename: str = None, directory: str = ".", monitor: int = 1) -> str:
+    """
+    Take a screenshot of the specified monitor.
+    
+    Args:
+        filename: Base filename (without extension). If None, uses timestamp
+        directory: Directory to save screenshot (default: current directory)
+        monitor: Monitor number to capture (1 = primary, 2 = secondary, etc.)
+        
+    Returns:
+        str: Full path to the saved screenshot file
+        
+    Raises:
+        ImportError: If mss library is not installed
+    """
+    if mss is None:
+        raise ImportError("mss isn't defined. Run: pip install mss")
+    
+    directory = pathlib.Path(directory).expanduser().resolve()
+    directory.mkdir(parents=True, exist_ok=True)
+    
+    if not filename:
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"screenshot_{timestamp}"
+    
+    out_path = directory / f"{filename}.png"
+    
+    with mss.mss() as sct:
+        mon = sct.monitors[monitor]
+        img = sct.grab(mon)
+        mss.tools.to_png(img.rgb, img.size, output=str(out_path))
+    
+    return str(out_path)
 
 
 if __name__ == "__main__":

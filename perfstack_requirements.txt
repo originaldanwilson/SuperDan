@@ -11,6 +11,9 @@ playwright>=1.40.0
 # For screenshot script (perfstack_screenshot.py) - uses system browsers
 selenium>=4.15.0
 
+# For simple screenshot functionality (--screenshot option)
+mss>=9.0.0
+
 # Optional: For better SSL/certificate handling
 certifi>=2021.5.25
 
