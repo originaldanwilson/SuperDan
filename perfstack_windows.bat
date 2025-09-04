@@ -46,8 +46,11 @@ echo.
 set /p CHOICE="Choose option (1-5): "
 if "%CHOICE%"=="" set CHOICE=1
 
-REM Build Python command
-set PYTHON_CMD=python perfstack_windows.py --host "%HOST%" --interface "%INTERFACE%" --hours %HOURS%
+REM Get the directory where this batch file is located
+set SCRIPT_DIR=%~dp0
+
+REM Build Python command with full path to the Python script
+set PYTHON_CMD=python "%SCRIPT_DIR%perfstack_windows.py" --host "%HOST%" --interface "%INTERFACE%" --hours %HOURS%
 
 if "%CHOICE%"=="1" (
     set PYTHON_CMD=%PYTHON_CMD% --open
@@ -70,8 +73,17 @@ if "%CHOICE%"=="1" (
 )
 
 echo.
+echo Script directory: %SCRIPT_DIR%
 echo Running: %PYTHON_CMD%
 echo.
+
+REM Check if the Python script exists
+if not exist "%SCRIPT_DIR%perfstack_windows.py" (
+    echo ERROR: perfstack_windows.py not found in %SCRIPT_DIR%
+    echo Make sure perfstack_windows.py is in the same directory as this batch file
+    pause
+    exit /b 1
+)
 
 REM Execute the Python script
 %PYTHON_CMD%
