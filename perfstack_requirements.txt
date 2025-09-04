@@ -1,0 +1,22 @@
+# PerfStack Scripts Requirements
+# Install with: pip install -r perfstack_requirements.txt
+
+# Core dependencies for all PerfStack scripts
+requests>=2.25.0
+urllib3>=1.26.0
+
+# For enhanced SSO script (perfstack_sso_enhanced.py)
+playwright>=1.40.0
+
+# Optional: For better SSL/certificate handling
+certifi>=2021.5.25
+
+# Development/debugging (optional)
+# ipython>=8.0.0
+# pdb++>=0.10.0
+
+# Installation notes:
+# 1. Install Python requirements: pip install -r perfstack_requirements.txt
+# 2. If using perfstack_sso_enhanced.py, also run: playwright install
+# 3. For corporate environments with SSL issues, you may need:
+#    pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host files.pythonhosted.org -r perfstack_requirements.txt
