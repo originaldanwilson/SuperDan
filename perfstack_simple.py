@@ -45,15 +45,18 @@ def main():
             iface_id = sw.resolve_interface_id(user, password, node_id, args.interface)
             print(f"   InterfaceID: {iface_id}")
         
-        # Build simple PerfStack URL with just the interface metrics
+        # Build PerfStack URL with ACTUAL working format from browser
         metrics = [
-            f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
-            f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
+            f"0_Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
+            f"0_Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
         ]
-        charts = "0_" + ",".join(metrics) + ";"
+        charts = ",".join(metrics)  # No semicolon, just comma-separated
         
-        # Just the basic PerfStack URL - no time parameters
-        params = {"charts": charts}
+        # Use the ACTUAL working parameters from manual browser test
+        params = {
+            "presetTime": "last7Days",  # Capital D - this is what works!
+            "charts": charts
+        }
         
         base_url = DEFAULT_WEB.rstrip("/") + "/apps/perfstack/?"
         query_string = urllib.parse.urlencode(params, safe='-_,:;')
@@ -64,20 +67,19 @@ def main():
         login_url = f"{DEFAULT_WEB.rstrip('/')}/Orion/Login.aspx?ReturnUrl={urllib.parse.quote(path_query, safe='')}"
         
         print()
-        print("🌐 Opening PerfStack (no time parameters)...")
+        print("🌐 Opening PerfStack with 7-day time window...")
         print(f"📊 Interface ID: {iface_id}")
         print(f"🔗 URL: {login_url}")
         print()
-        print("📝 Manual steps:")
+        print("📝 Steps:")
         print("   1. Log into SolarWinds")
-        print("   2. Wait for PerfStack to load")
-        print("   3. Manually change time frame to 7 days using the dropdown")
-        print("   4. Take your screenshot")
+        print("   2. PerfStack should load with 7-day data automatically")
+        print("   3. Take your screenshot")
         print()
         
         # Open in browser
         webbrowser.open(login_url)
-        print("✅ PerfStack opened in browser - manually adjust time frame to 7 days")
+        print("✅ PerfStack opened with correct format - should show 7 days of data!")
         
     except Exception as e:
         print(f"❌ Error: {e}")
