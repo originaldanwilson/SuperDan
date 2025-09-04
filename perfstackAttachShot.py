@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-# Attach to a running Chrome/Edge (CDP) and screenshot a SolarWinds PerfStack view
+"""
+Attach to a running Chrome/Edge (CDP) and screenshot a SolarWinds PerfStack view
+Updated with working SolarWinds format: presetTime=last7Days and proper chart format
+"""
 import argparse, asyncio, urllib.parse, os, ipaddress, requests
-from datetime import datetime, timedelta, timezone
-from tools import get_ad_creds  # your AD creds helper
+from datetime import datetime
+from tools import get_ad_creds
 
 DEFAULT_SWIS = "https://orionApi.company.com:17774"
 DEFAULT_WEB  = "https://orion.company.com"
@@ -31,25 +34,73 @@ def resolve_node_id(base, user, pwd, host):
 
 def resolve_iface_id(base, user, pwd, node_id, iface):
     n = iface.replace("'", "''")
+    # Try exact match first
     swql = ("SELECT TOP 1 InterfaceID FROM Orion.NPM.Interfaces "
-            f"WHERE NodeID={node_id} AND (Name LIKE '%{n}%' OR Caption LIKE '%{n}%')")
+            f"WHERE NodeID={node_id} AND (Name='{n}' OR Caption='{n}')")
     res = swis_get(base, user, pwd, swql)
+    
+    # If no exact match, fall back to substring match with warning
+    if not res:
+        print(f"⚠️  No exact match for '{iface}', trying substring match...")
+        swql = ("SELECT TOP 1 InterfaceID FROM Orion.NPM.Interfaces "
+                f"WHERE NodeID={node_id} AND (Name LIKE '%{n}%' OR Caption LIKE '%{n}%')")
+        res = swis_get(base, user, pwd, swql)
+    
     if not res: raise RuntimeError(f"No interface containing '{iface}' on NodeID {node_id}")
     return int(res[0]["InterfaceID"])
 
-def last_hours_window(hours):
-    end = datetime.now(timezone.utc)
-    start = end - timedelta(hours=hours)
-    return start.strftime("%Y-%m-%dT%H:%M:%SZ"), end.strftime("%Y-%m-%dT%H:%M:%SZ")
+def hours_to_preset(hours):
+    """Convert hours to SolarWinds preset time string"""
+    presets = {
+        1: "last1Hour",
+        2: "last2Hours", 
+        4: "last4Hours",
+        8: "last8Hours",
+        12: "last12Hours",
+        24: "last24Hours",
+        48: "last2Days",
+        72: "last3Days",
+        168: "last7Days",  # 7 days - this is the working format!
+        336: "last2Weeks", # 14 days  
+        720: "last30Days", # 30 days
+        2160: "last90Days" # 90 days
+    }
+    
+    # Find closest preset
+    if hours in presets:
+        return presets[hours]
+    
+    # Find closest match
+    closest = min(presets.keys(), key=lambda x: abs(x - hours))
+    preset = presets[closest]
+    
+    if closest != hours:
+        print(f"⚠️  No exact preset for {hours} hours, using closest: {preset} ({closest} hours)")
+    
+    return preset
 
-def build_perfstack_url(web_base, iface_id, t_from, t_to):
+def build_perfstack_url(web_base, iface_id, hours):
+    """Build PerfStack URL using the ACTUAL working SolarWinds format"""
+    # Convert hours to SolarWinds preset format
+    preset_time = hours_to_preset(hours)
+    
+    # Use the ACTUAL working format from browser testing
     metrics = [
-        f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
-        f"Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps",
+        f"0_Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
+        f"0_Orion.NPM.Interfaces_{iface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
     ]
-    charts = "0_" + ",".join(metrics) + ";"
-    qs = {"charts": charts, "timeFrom": t_from, "timeTo": t_to}
-    return web_base.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(qs)
+    charts = ",".join(metrics)  # Comma-separated, no semicolon
+    
+    print(f"🔗 URL parameters:")
+    print(f"   presetTime: {preset_time} ({hours} hours)")
+    print(f"   charts:     {charts}")
+    
+    params = {
+        "presetTime": preset_time,
+        "charts": charts
+    }
+    
+    return web_base.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(params)
 
 async def attach_and_shot(cdp_url, target_url, outfile, width=1600, height=900):
     from playwright.async_api import async_playwright
@@ -82,16 +133,29 @@ def main():
     requests.packages.urllib3.disable_warnings()
     user, pwd = get_ad_creds()
 
+    print(f"🔍 Resolving node: {args.host}")
     node_id  = resolve_node_id(DEFAULT_SWIS, user, pwd, args.host)
+    print(f"   NodeID: {node_id}")
+    
+    print(f"🔍 Resolving interface: {args.interface}")
     iface_id = resolve_iface_id(DEFAULT_SWIS, user, pwd, node_id, args.interface)
-    t_from, t_to = last_hours_window(args.hours)
-    url = build_perfstack_url(DEFAULT_WEB, iface_id, t_from, t_to)
+    print(f"   InterfaceID: {iface_id}")
+    
+    print(f"🕐 Building PerfStack URL for {args.hours} hours...")
+    url = build_perfstack_url(DEFAULT_WEB, iface_id, args.hours)
 
     stem, ext = os.path.splitext(args.outfile)
     stamped = f"{stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{ext}"
-    print(f"Attaching to {args.cdp}\nNavigating to:\n{url}\nSaving: {stamped}")
-
+    
+    print()
+    print(f"📷 Taking screenshot...")
+    print(f"   CDP: {args.cdp}")
+    print(f"   URL: {url}")
+    print(f"   File: {stamped}")
+    print()
+    
     asyncio.run(attach_and_shot(args.cdp, url, stamped))
+    print(f"✅ Screenshot saved: {stamped}")
 
 if __name__ == "__main__":
     main()
