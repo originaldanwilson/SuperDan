@@ -101,7 +101,7 @@ class WindowsPerfStackSolution:
         except ValueError:
             return False
 
-    def build_time_window(self, hours):
+    def build_time_window(self, hours, use_epoch=False):
         """Build time window for PerfStack"""
         # Get current time and ensure we have enough precision
         now = datetime.now(timezone.utc)
@@ -115,17 +115,19 @@ class WindowsPerfStackSolution:
             hours = 1
             print(f"⚠️  Adjusted to minimum 1-hour window")
         
-        # Try different SolarWinds time formats (some versions are picky)
-        # Format 1: Full ISO with milliseconds
-        start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        end_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        
-        # Alternative format if the above doesn't work (uncomment if needed):
-        # start_str = start.strftime("%Y-%m-%dT%H:%M:%SZ")
-        # end_str = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        if use_epoch:
+            # Use epoch timestamps in milliseconds (some SolarWinds versions prefer this)
+            start_str = str(int(start.timestamp() * 1000))
+            end_str = str(int(now.timestamp() * 1000))
+            print(f"🕐 Time window (epoch milliseconds):")
+        else:
+            # Try different SolarWinds time formats (some versions are picky)
+            # Format 1: Full ISO with milliseconds
+            start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            end_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            print(f"🕐 Time window (ISO format):")
         
         # Debug output
-        print(f"🕐 Time window calculation:")
         print(f"   Start: {start_str} ({hours} hours ago)")
         print(f"   End:   {end_str} (now)")
         print(f"   Duration: {hours} hours")
@@ -134,8 +136,12 @@ class WindowsPerfStackSolution:
         if start_str == end_str:
             print(f"⚠️  ERROR: Start and end times are still identical!")
             # Force a different start time
-            start = now - timedelta(hours=hours, minutes=1)
-            start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            if use_epoch:
+                start = now - timedelta(hours=hours, minutes=1)
+                start_str = str(int(start.timestamp() * 1000))
+            else:
+                start = now - timedelta(hours=hours, minutes=1)
+                start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
             print(f"   Forced adjustment - Start: {start_str}")
         
         return (start_str, end_str)
@@ -400,6 +406,8 @@ Examples:
     
     parser.add_argument("--browser", choices=['chrome', 'edge', 'firefox', 'ie'],
                        help="Preferred browser (only with --open)")
+    parser.add_argument("--epoch", action="store_true",
+                       help="Use epoch timestamps instead of ISO format (try if time window is wrong)")
     
     args = parser.parse_args()
     
@@ -428,7 +436,7 @@ Examples:
         print(f"   InterfaceID: {iface_id}")
         
         # Build time window and URLs
-        time_from, time_to = sw.build_time_window(args.hours)
+        time_from, time_to = sw.build_time_window(args.hours, args.epoch)
         perfstack_url = sw.build_perfstack_url(iface_id, time_from, time_to)
         login_url = sw.build_login_url(perfstack_url)
         
