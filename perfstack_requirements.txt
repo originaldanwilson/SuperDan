@@ -5,8 +5,11 @@
 requests>=2.25.0
 urllib3>=1.26.0
 
-# For enhanced SSO script (perfstack_sso_enhanced.py)
+# For enhanced SSO script (perfstack_sso_enhanced.py) - DEPRECATED
 playwright>=1.40.0
+
+# For screenshot script (perfstack_screenshot.py) - uses system browsers
+selenium>=4.15.0
 
 # Optional: For better SSL/certificate handling
 certifi>=2021.5.25
