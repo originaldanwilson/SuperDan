@@ -146,8 +146,38 @@ class WindowsPerfStackSolution:
         
         return (start_str, end_str)
 
-    def build_perfstack_url(self, interface_id, time_from, time_to, metrics=None):
-        """Build PerfStack URL with explicit time window"""
+    def hours_to_preset(self, hours):
+        """Convert hours to SolarWinds preset time string"""
+        presets = {
+            1: "last1hour",
+            2: "last2hours", 
+            4: "last4hours",
+            8: "last8hours",
+            12: "last12hours",
+            24: "last24hours",
+            48: "last2days",
+            72: "last3days",
+            168: "last7days",  # 7 days
+            336: "last2weeks", # 14 days  
+            720: "last30days", # 30 days
+            2160: "last90days" # 90 days
+        }
+        
+        # Find closest preset
+        if hours in presets:
+            return presets[hours]
+        
+        # Find closest match
+        closest = min(presets.keys(), key=lambda x: abs(x - hours))
+        preset = presets[closest]
+        
+        if closest != hours:
+            print(f"⚠️  No exact preset for {hours} hours, using closest: {preset} ({closest} hours)")
+        
+        return preset
+
+    def build_perfstack_url(self, interface_id, time_from=None, time_to=None, metrics=None, preset_time=None):
+        """Build PerfStack URL with explicit time window or preset time"""
         if metrics is None:
             metrics = [
                 f"Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
@@ -156,17 +186,28 @@ class WindowsPerfStackSolution:
         
         charts = "0_" + ",".join(metrics) + ";"
         
-        # Debug the time parameters
-        print(f"🔗 URL parameters:")
-        print(f"   timeFrom: {time_from}")
-        print(f"   timeTo:   {time_to}")
-        print(f"   charts:   {charts}")
-        
-        params = {
-            "charts": charts,
-            "timeFrom": time_from,
-            "timeTo": time_to
-        }
+        if preset_time:
+            # Use preset time (more reliable)
+            print(f"🔗 URL parameters (preset):")
+            print(f"   presetTime: {preset_time}")
+            print(f"   charts:     {charts}")
+            
+            params = {
+                "charts": charts,
+                "presetTime": preset_time
+            }
+        else:
+            # Use explicit time range (may not work on all SolarWinds versions)
+            print(f"🔗 URL parameters (explicit):")
+            print(f"   timeFrom: {time_from}")
+            print(f"   timeTo:   {time_to}")
+            print(f"   charts:   {charts}")
+            
+            params = {
+                "charts": charts,
+                "timeFrom": time_from,
+                "timeTo": time_to
+            }
         
         # Build URL with proper encoding
         base_url = self.web_base.rstrip("/") + "/apps/perfstack/?"
@@ -408,6 +449,8 @@ Examples:
                        help="Preferred browser (only with --open)")
     parser.add_argument("--epoch", action="store_true",
                        help="Use epoch timestamps instead of ISO format (try if time window is wrong)")
+    parser.add_argument("--preset", action="store_true",
+                       help="Use SolarWinds preset times (last7days, etc.) - more reliable than explicit times")
     
     args = parser.parse_args()
     
@@ -436,11 +479,18 @@ Examples:
         print(f"   InterfaceID: {iface_id}")
         
         # Build time window and URLs
-        time_from, time_to = sw.build_time_window(args.hours, args.epoch)
-        perfstack_url = sw.build_perfstack_url(iface_id, time_from, time_to)
+        if args.preset:
+            # Use preset time (more reliable)
+            preset_time = sw.hours_to_preset(args.hours)
+            print(f"🕐 Using preset time: {preset_time} ({args.hours} hours)")
+            perfstack_url = sw.build_perfstack_url(iface_id, preset_time=preset_time)
+        else:
+            # Use explicit time stamps  
+            time_from, time_to = sw.build_time_window(args.hours, args.epoch)
+            print(f"🕐 Time window: {time_from} to {time_to}")
+            perfstack_url = sw.build_perfstack_url(iface_id, time_from, time_to)
+            
         login_url = sw.build_login_url(perfstack_url)
-        
-        print(f"🕐 Time window: {time_from} to {time_to}")
         print()
         
         # Create filename base
