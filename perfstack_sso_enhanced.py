@@ -97,13 +97,25 @@ class SolarWindsSSO:
     def resolve_interface_id(self, user, password, node_id, interface):
         """Resolve interface name to InterfaceID"""
         iface_esc = interface.replace("'", "''")
+        # Try exact match first
         swql = (
             "SELECT TOP 1 InterfaceID FROM Orion.NPM.Interfaces "
             f"WHERE NodeID={node_id} AND "
-            f"(Name LIKE '%{iface_esc}%' OR Caption LIKE '%{iface_esc}%')"
+            f"(Name='{iface_esc}' OR Caption='{iface_esc}')"
         )
         
         results = self.swis_query(user, password, swql)
+        
+        # If no exact match, fall back to substring match with warning
+        if not results:
+            print(f"⚠️  No exact match for '{interface}', trying substring match...")
+            swql = (
+                "SELECT TOP 1 InterfaceID FROM Orion.NPM.Interfaces "
+                f"WHERE NodeID={node_id} AND "
+                f"(Name LIKE '%{iface_esc}%' OR Caption LIKE '%{iface_esc}%')"
+            )
+            results = self.swis_query(user, password, swql)
+        
         if not results:
             raise RuntimeError(f"No interface containing '{interface}' on NodeID {node_id}")
         
