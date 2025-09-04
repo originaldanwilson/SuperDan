@@ -47,6 +47,21 @@ def get_netmiko_creds():
     return netmikoUser, passwd, enable
 
 
+def get_ad_creds():
+    """
+    Get Active Directory credentials for SolarWinds authentication.
+    
+    Returns:
+        tuple: A tuple containing (username, password)
+    """
+    # Replace these with your actual SolarWinds credentials
+    import getpass
+    print("Enter SolarWinds credentials:")
+    username = input("Username: ")
+    password = getpass.getpass("Password: ")
+    return username, password
+
+
 def get_netmiko_device_config(hostname, device_type="cisco_ios", timeout_multiplier=3):
     """
     Get Netmiko device configuration with extended timeouts for large transfers.
@@ -252,7 +267,7 @@ def print_file_with_permissions(file_path, show_size=True, show_timestamp=True):
         
         if show_timestamp:
             # Format modification time
-            mod_time = datetime.fromtimestamp(file_stat.st_mtime)
+            mod_time = datetime.datetime.fromtimestamp(file_stat.st_mtime)
             time_str = mod_time.strftime("%b %d %H:%M")
             components.append(time_str)
         
