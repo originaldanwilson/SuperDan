@@ -129,6 +129,36 @@ class SolarWindsSSO:
         except ValueError:
             return False
 
+    def hours_to_preset(self, hours):
+        """Convert hours to SolarWinds preset time string"""
+        presets = {
+            1: "last1Hour",
+            2: "last2Hours", 
+            4: "last4Hours",
+            8: "last8Hours",
+            12: "last12Hours",
+            24: "last24Hours",
+            48: "last2Days",
+            72: "last3Days",
+            168: "last7Days",  # 7 days - this is the working format!
+            336: "last2Weeks", # 14 days  
+            720: "last30Days", # 30 days
+            2160: "last90Days" # 90 days
+        }
+        
+        # Find closest preset
+        if hours in presets:
+            return presets[hours]
+        
+        # Find closest match
+        closest = min(presets.keys(), key=lambda x: abs(x - hours))
+        preset = presets[closest]
+        
+        if closest != hours:
+            print(f"⚠️  No exact preset for {hours} hours, using closest: {preset} ({closest} hours)")
+        
+        return preset
+
     def build_time_window(self, hours):
         """Build time window for PerfStack"""
         end = datetime.now(timezone.utc)
@@ -138,19 +168,21 @@ class SolarWindsSSO:
             end.strftime("%Y-%m-%dT%H:%M:%SZ")
         )
 
-    def build_perfstack_url(self, interface_id, time_from, time_to, metrics=None):
-        """Build PerfStack URL with explicit time window"""
-        if metrics is None:
-            metrics = [
-                f"Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
-                f"Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
-            ]
+    def build_perfstack_url(self, interface_id, hours=168):
+        """Build PerfStack URL using the actual working SolarWinds format"""
+        # Convert hours to SolarWinds preset format  
+        preset_time = self.hours_to_preset(hours)
         
-        charts = "0_" + ",".join(metrics) + ";"
+        # Use the ACTUAL working format from browser testing
+        metrics = [
+            f"0_Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
+            f"0_Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
+        ]
+        charts = ",".join(metrics)  # Comma-separated, no semicolon
+        
         params = {
-            "charts": charts,
-            "timeFrom": time_from,
-            "timeTo": time_to
+            "presetTime": preset_time,
+            "charts": charts
         }
         
         return self.web_base.rstrip("/") + "/apps/perfstack/?" + urllib.parse.urlencode(params)
@@ -445,12 +477,10 @@ Examples:
         iface_id = sw.resolve_interface_id(user, password, node_id, args.interface)
         print(f"   InterfaceID: {iface_id}")
         
-        # Build time window and URLs
-        time_from, time_to = sw.build_time_window(args.hours)
-        perfstack_url = sw.build_perfstack_url(iface_id, time_from, time_to)
+        # Build PerfStack URL with working format
+        print(f"🕐 Building PerfStack URL for {args.hours} hours...")
+        perfstack_url = sw.build_perfstack_url(iface_id, args.hours)
         login_url = sw.build_login_url(perfstack_url)
-        
-        print(f"🕐 Time window: {time_from} to {time_to}")
         print(f"🌐 PerfStack URL: {perfstack_url}")
         
         # Create timestamped output filename

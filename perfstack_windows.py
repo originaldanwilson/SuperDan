@@ -101,66 +101,23 @@ class WindowsPerfStackSolution:
         except ValueError:
             return False
 
-    def build_time_window(self, hours, use_epoch=False):
-        """Build time window for PerfStack"""
-        # Get current time and ensure we have enough precision
-        now = datetime.now(timezone.utc)
-        
-        # Calculate start time - ensure it's significantly different from end
-        start = now - timedelta(hours=hours)
-        
-        # For very short time windows, ensure at least 1 minute difference
-        if hours < 1:
-            start = now - timedelta(hours=1)  # Minimum 1 hour window
-            hours = 1
-            print(f"⚠️  Adjusted to minimum 1-hour window")
-        
-        if use_epoch:
-            # Use epoch timestamps in milliseconds (some SolarWinds versions prefer this)
-            start_str = str(int(start.timestamp() * 1000))
-            end_str = str(int(now.timestamp() * 1000))
-            print(f"🕐 Time window (epoch milliseconds):")
-        else:
-            # Try different SolarWinds time formats (some versions are picky)
-            # Format 1: Full ISO with milliseconds
-            start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            end_str = now.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            print(f"🕐 Time window (ISO format):")
-        
-        # Debug output
-        print(f"   Start: {start_str} ({hours} hours ago)")
-        print(f"   End:   {end_str} (now)")
-        print(f"   Duration: {hours} hours")
-        
-        # Double-check times are different
-        if start_str == end_str:
-            print(f"⚠️  ERROR: Start and end times are still identical!")
-            # Force a different start time
-            if use_epoch:
-                start = now - timedelta(hours=hours, minutes=1)
-                start_str = str(int(start.timestamp() * 1000))
-            else:
-                start = now - timedelta(hours=hours, minutes=1)
-                start_str = start.strftime("%Y-%m-%dT%H:%M:%S.000Z")
-            print(f"   Forced adjustment - Start: {start_str}")
-        
-        return (start_str, end_str)
+    # Removed build_time_window - using SolarWinds presets instead
 
     def hours_to_preset(self, hours):
         """Convert hours to SolarWinds preset time string"""
         presets = {
-            1: "last1hour",
-            2: "last2hours", 
-            4: "last4hours",
-            8: "last8hours",
-            12: "last12hours",
-            24: "last24hours",
-            48: "last2days",
-            72: "last3days",
-            168: "last7days",  # 7 days
-            336: "last2weeks", # 14 days  
-            720: "last30days", # 30 days
-            2160: "last90days" # 90 days
+            1: "last1Hour",
+            2: "last2Hours", 
+            4: "last4Hours",
+            8: "last8Hours",
+            12: "last12Hours",
+            24: "last24Hours",
+            48: "last2Days",
+            72: "last3Days",
+            168: "last7Days",  # 7 days - this is the working format!
+            336: "last2Weeks", # 14 days  
+            720: "last30Days", # 30 days
+            2160: "last90Days" # 90 days
         }
         
         # Find closest preset
@@ -176,48 +133,31 @@ class WindowsPerfStackSolution:
         
         return preset
 
-    def build_perfstack_url(self, interface_id, time_from=None, time_to=None, metrics=None, preset_time=None):
-        """Build PerfStack URL with explicit time window or preset time"""
-        if metrics is None:
-            metrics = [
-                f"Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
-                f"Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
-            ]
+    def build_perfstack_url(self, interface_id, hours=168):
+        """Build PerfStack URL using the actual working SolarWinds format"""
+        # Convert hours to SolarWinds preset format
+        preset_time = self.hours_to_preset(hours)
         
-        charts = "0_" + ",".join(metrics) + ";"
+        # Use the ACTUAL working format from browser testing
+        metrics = [
+            f"0_Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.InAveragebps",
+            f"0_Orion.NPM.Interfaces_{interface_id}-Orion.NPM.InterfaceTraffic.OutAveragebps"
+        ]
+        charts = ",".join(metrics)  # Comma-separated, no semicolon
         
-        if preset_time:
-            # Use preset time (more reliable)
-            print(f"🔗 URL parameters (preset):")
-            print(f"   presetTime: {preset_time}")
-            print(f"   charts:     {charts}")
-            
-            params = {
-                "charts": charts,
-                "presetTime": preset_time
-            }
-        else:
-            # Use explicit time range (may not work on all SolarWinds versions)
-            print(f"🔗 URL parameters (explicit):")
-            print(f"   timeFrom: {time_from}")
-            print(f"   timeTo:   {time_to}")
-            print(f"   charts:   {charts}")
-            
-            params = {
-                "charts": charts,
-                "timeFrom": time_from,
-                "timeTo": time_to
-            }
+        print(f"🔗 URL parameters:")
+        print(f"   presetTime: {preset_time} ({hours} hours)")
+        print(f"   charts:     {charts}")
+        
+        params = {
+            "presetTime": preset_time,
+            "charts": charts
+        }
         
         # Build URL with proper encoding
         base_url = self.web_base.rstrip("/") + "/apps/perfstack/?"
         query_string = urllib.parse.urlencode(params, safe='-_,:;')
         full_url = base_url + query_string
-        
-        # Debug the encoding
-        print(f"🔍 Debug encoding:")
-        print(f"   Raw query: {query_string}")
-        print(f"   Decoded: {urllib.parse.unquote(query_string)}")
         
         print(f"🌐 Full URL: {full_url}")
         print()
@@ -452,10 +392,7 @@ Examples:
     
     parser.add_argument("--browser", choices=['chrome', 'edge', 'firefox', 'ie'],
                        help="Preferred browser (only with --open)")
-    parser.add_argument("--epoch", action="store_true",
-                       help="Use epoch timestamps instead of ISO format (try if time window is wrong)")
-    parser.add_argument("--preset", action="store_true",
-                       help="Use SolarWinds preset times (last7days, etc.) - more reliable than explicit times")
+    # Removed complex time options - now using proven working format
     
     args = parser.parse_args()
     
@@ -483,18 +420,9 @@ Examples:
         iface_id = sw.resolve_interface_id(user, password, node_id, args.interface)
         print(f"   InterfaceID: {iface_id}")
         
-        # Build time window and URLs
-        if args.preset:
-            # Use preset time (more reliable)
-            preset_time = sw.hours_to_preset(args.hours)
-            print(f"🕐 Using preset time: {preset_time} ({args.hours} hours)")
-            perfstack_url = sw.build_perfstack_url(iface_id, preset_time=preset_time)
-        else:
-            # Use explicit time stamps  
-            time_from, time_to = sw.build_time_window(args.hours, args.epoch)
-            print(f"🕐 Time window: {time_from} to {time_to}")
-            perfstack_url = sw.build_perfstack_url(iface_id, time_from, time_to)
-            
+        # Build PerfStack URL with working format
+        print(f"🕐 Building PerfStack URL for {args.hours} hours...")
+        perfstack_url = sw.build_perfstack_url(iface_id, args.hours)
         login_url = sw.build_login_url(perfstack_url)
         print()
         
