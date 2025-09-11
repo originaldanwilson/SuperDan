@@ -29,6 +29,8 @@ if [ -z "$DEVICES" ]; then
     exit 1
 fi
 
+echo "Found devices: $DEVICES"
+
 # Process each device
 for device in $DEVICES; do
     echo "Processing device: $device"
