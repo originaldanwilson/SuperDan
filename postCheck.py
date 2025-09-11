@@ -27,14 +27,7 @@ COMMANDS = [
 ]
 
 def main():
-    # Try different setupLogging signatures
-    try:
-        logger = setupLogging()
-    except TypeError:
-        # If it needs scriptName and timestamp arguments
-        script_name = getScriptName()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        logger = setupLogging(script_name, timestamp)
+    logger = setupLogging()
     username, password, enable_secret = get_netmiko_creds()
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
