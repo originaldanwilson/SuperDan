@@ -1,0 +1,57 @@
+2025-09-11 16:43:19,006 - INFO - setupLogging:161 - Logging initialized. Log file: logs/preCheck_20250911_164319.log
+2025-09-11 16:43:19,007 - INFO - main:47 - Connecting to nxos-switch-01
+2025-09-11 16:43:19,009 - ERROR - main:74 - Failed on nxos-switch-01: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-01:22
+
+
+2025-09-11 16:43:19,010 - INFO - main:47 - Connecting to nxos-switch-02
+2025-09-11 16:43:19,010 - ERROR - main:74 - Failed on nxos-switch-02: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-02:22
+
+
+2025-09-11 16:43:19,011 - INFO - main:47 - Connecting to nxos-switch-03
+2025-09-11 16:43:19,011 - ERROR - main:74 - Failed on nxos-switch-03: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-03:22
+
+
+2025-09-11 16:43:19,012 - INFO - main:47 - Connecting to nxos-switch-04
+2025-09-11 16:43:19,013 - ERROR - main:74 - Failed on nxos-switch-04: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-04:22
+
+
+2025-09-11 16:43:19,014 - INFO - main:47 - Connecting to nxos-switch-05
+2025-09-11 16:43:19,014 - ERROR - main:74 - Failed on nxos-switch-05: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-05:22
+
+
+2025-09-11 16:43:19,014 - INFO - main:77 - Pre-check complete. Files saved in: precheck_20250911_164319

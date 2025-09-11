@@ -1,0 +1,57 @@
+2025-09-11 16:15:03,598 - INFO - setupLogging:161 - Logging initialized. Log file: logs/postCheck_20250911_161503.log
+2025-09-11 16:15:03,598 - INFO - main:47 - Connecting to nxos-switch-01
+2025-09-11 16:15:03,603 - ERROR - main:74 - Failed on nxos-switch-01: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-01:22
+
+
+2025-09-11 16:15:03,603 - INFO - main:47 - Connecting to nxos-switch-02
+2025-09-11 16:15:03,604 - ERROR - main:74 - Failed on nxos-switch-02: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-02:22
+
+
+2025-09-11 16:15:03,604 - INFO - main:47 - Connecting to nxos-switch-03
+2025-09-11 16:15:03,605 - ERROR - main:74 - Failed on nxos-switch-03: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-03:22
+
+
+2025-09-11 16:15:03,606 - INFO - main:47 - Connecting to nxos-switch-04
+2025-09-11 16:15:03,608 - ERROR - main:74 - Failed on nxos-switch-04: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-04:22
+
+
+2025-09-11 16:15:03,609 - INFO - main:47 - Connecting to nxos-switch-05
+2025-09-11 16:15:03,610 - ERROR - main:74 - Failed on nxos-switch-05: TCP connection to device failed.
+
+Common causes of this problem are:
+1. Incorrect hostname or IP address.
+2. Wrong TCP port.
+3. Intermediate firewall blocking access.
+
+Device settings: cisco_nxos nxos-switch-05:22
+
+
+2025-09-11 16:15:03,610 - INFO - main:77 - Post-check complete. Files saved in: postcheck_20250911_161503

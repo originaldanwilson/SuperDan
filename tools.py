@@ -162,6 +162,21 @@ def setupLogging(log_level=logging.INFO, log_file=None):
     return logger
 
 
+def setupLoggingNew(log_level=logging.INFO, log_file=None):
+    """
+    New logging setup function for corporate compatibility.
+    Same as setupLogging but with different name to avoid conflicts.
+    
+    Args:
+        log_level: Logging level (default: INFO)
+        log_file: Optional log file name. If None, uses script name with timestamp
+    
+    Returns:
+        logger: Configured logger instance
+    """
+    return setupLogging(log_level, log_file)
+
+
 def set_file_permissions(file_path, permissions=0o777):
     """
     Set file permissions for a given file.

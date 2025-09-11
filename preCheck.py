@@ -7,7 +7,7 @@ Quick and dirty script to capture device state before changes
 import os
 from datetime import datetime
 from netmiko import ConnectHandler
-from tools import get_netmiko_creds, setupLogging, getScriptName
+from tools import get_netmiko_creds, setupLoggingNew, getScriptName
 
 # Configure your devices and commands here
 DEVICES = [
@@ -27,7 +27,7 @@ COMMANDS = [
 ]
 
 def main():
-    logger = setupLogging()
+    logger = setupLoggingNew()
     username, password, enable_secret = get_netmiko_creds()
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
