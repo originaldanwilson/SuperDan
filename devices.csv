@@ -1,0 +1,14 @@
+devicename,ipAddr,deviceGroup,deviceType
+sw01-access,192.168.1.10,cisco_ios
+sw02-access,192.168.1.20,cisco_ios
+rtr01-core,192.168.1.30,cisco_xe
+rtr02-wan,192.168.1.40,cisco_ios
+sw03-dist,192.168.1.50,cisco_xe
+rtr03-branch,192.168.1.60,cisco_ios
+sw04-core,192.168.1.70,cisco_xe
+sw02-access,192.168.1.20,cisco_ios
+rtr01-core,192.168.1.30,cisco_xe
+rtr02-wan,192.168.1.40,cisco_ios
+sw03-dist,192.168.1.50,cisco_xe
+rtr03-branch,192.168.1.60,cisco_ios
+sw04-core,192.168.1.70,cisco_xe
