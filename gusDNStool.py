@@ -4,7 +4,7 @@ DNS Performance Testing Tool for SD-WAN/Network Engineers
 
 Features:
 - Configurable requests per second (RPS) rate limiting
-- Multi-threaded worker support
+- Multi-threaded worker supportdns_perf_test.py
 - Detailed timestamps and logging
 - Support for local or remote domain lists
 - Comprehensive error classification
@@ -12,8 +12,8 @@ Features:
 - Portable - single Python file with minimal dependencies
 
 Usage:
-    python3 dns_perf_test.py --server 8.8.8.8 --rate 100 --duration 60 --threads 10
-    python3 dns_perf_test.py --server 10.1.1.1 --domains domains.txt --rate 50 --threads 5
+    python3 gusDNStool.py --server 8.8.8.8 --rate 100 --duration 60 --threads 10
+    python3 gusDNStool.py --server 10.1.1.1 --domains domains.txt --rate 50 --threads 5
 """
 
 import argparse
