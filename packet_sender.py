@@ -10,8 +10,7 @@ import time
 import threading
 import argparse
 import sys
-from datetime import datetime, timedelta
-import random
+import struct
 
 
 class PacketSender:
@@ -50,23 +49,39 @@ class PacketSender:
         # Size range for variable modes
         self.min_size = 100
         self.max_size = 1500
+        
+        # Pre-create payloads for performance
+        self.payloads = self._create_payloads()
 
-    def get_packet_size(self, packet_count):
-        """Calculate packet size based on mode."""
+    def _create_payloads(self):
+        """Pre-create payloads for better performance."""
         if self.size_mode == 'fixed':
-            return self.packet_size
+            return {self.packet_size: bytes(self.packet_size)}
+        elif self.size_mode in ['increasing', 'decreasing']:
+            # Pre-create payloads for common sizes
+            payloads = {}
+            for size in range(self.min_size, self.max_size + 1, 10):
+                payloads[size] = bytes(size)
+            return payloads
+        else:
+            return {self.packet_size: bytes(self.packet_size)}
+    
+    def get_payload(self, packet_count):
+        """Get pre-created payload based on mode."""
+        if self.size_mode == 'fixed':
+            return self.payloads[self.packet_size]
         elif self.size_mode == 'increasing':
-            # Cycle through sizes from min to max
-            size_range = self.max_size - self.min_size
-            offset = (packet_count * 10) % size_range  # Increment by 10 bytes
-            return self.min_size + offset
-        elif self.size_mode == 'decreasing':
-            # Cycle through sizes from max to min
             size_range = self.max_size - self.min_size
             offset = (packet_count * 10) % size_range
-            return self.max_size - offset
+            size = self.min_size + offset
+            return self.payloads.get(size, bytes(size))
+        elif self.size_mode == 'decreasing':
+            size_range = self.max_size - self.min_size
+            offset = (packet_count * 10) % size_range
+            size = self.max_size - offset
+            return self.payloads.get(size, bytes(size))
         else:
-            return self.packet_size
+            return self.payloads[self.packet_size]
 
     def create_socket(self):
         """Create appropriate socket based on configuration."""
@@ -82,8 +97,14 @@ class PacketSender:
                 print("ERROR: Raw socket creation failed. Run with administrator/root privileges.")
                 sys.exit(1)
         else:
-            # Standard UDP socket
+            # Standard UDP socket with performance optimizations
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            
+            # Increase socket buffer sizes for better throughput
+            try:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1048576)  # 1MB send buffer
+            except OSError:
+                pass  # Ignore if system doesn't support
             
             # Bind to specific local IP if requested (no root required)
             if self.bind_ip:
@@ -97,43 +118,45 @@ class PacketSender:
             return sock
 
     def send_packets(self, thread_id):
-        """Send packets from a single thread."""
+        """Send packets from a single thread with optimized timing."""
         sock = self.create_socket()
         local_packet_count = 0
         local_bytes_sent = 0
         
-        # Calculate sleep time between packets for this thread
-        pps_per_thread = self.pps / self.num_threads
-        sleep_time = 1.0 / pps_per_thread if pps_per_thread > 0 else 0
+        # Pre-resolve target address once
+        target = (self.target_ip, self.target_port)
         
-        end_time = datetime.now() + timedelta(seconds=self.duration)
+        # Calculate timing for rate limiting
+        pps_per_thread = self.pps / self.num_threads
+        batch_size = max(1, int(pps_per_thread / 100))  # Send in small batches
+        sleep_time = batch_size / pps_per_thread if pps_per_thread > 0 else 0
+        
+        end_time = time.time() + self.duration
         
         try:
-            while datetime.now() < end_time and not self.stop_flag.is_set():
-                # Determine packet size
-                packet_size = self.get_packet_size(local_packet_count)
+            while time.time() < end_time and not self.stop_flag.is_set():
+                # Send packets in batches without checking time each iteration
+                batch_start = time.time()
                 
-                # Create payload
-                payload = b'X' * packet_size
-                
-                try:
-                    if self.source_ip:
-                        # Build packet with spoofed IP (simplified - production needs proper headers)
-                        sock.sendto(payload, (self.target_ip, self.target_port))
-                    else:
-                        # Standard send
-                        sock.sendto(payload, (self.target_ip, self.target_port))
+                for _ in range(batch_size):
+                    # Get pre-created payload
+                    payload = self.get_payload(local_packet_count)
                     
-                    local_packet_count += 1
-                    local_bytes_sent += packet_size
-                    
-                except socket.error as e:
-                    print(f"Thread {thread_id}: Socket error - {e}")
-                    break
+                    try:
+                        sock.sendto(payload, target)
+                        local_packet_count += 1
+                        local_bytes_sent += len(payload)
+                    except socket.error as e:
+                        print(f"\nThread {thread_id}: Socket error - {e}")
+                        self.stop_flag.set()
+                        break
                 
-                # Rate limiting
+                # Rate limiting with better precision
                 if sleep_time > 0:
-                    time.sleep(sleep_time)
+                    elapsed = time.time() - batch_start
+                    sleep_needed = sleep_time - elapsed
+                    if sleep_needed > 0:
+                        time.sleep(sleep_needed)
         
         finally:
             sock.close()
