@@ -15,7 +15,7 @@ import time
 
 def main():
     # Output command line args to screen
-    if args.verbose: printmsg("Arguments used:"); print args ;
+    if args.verbose: printmsg("Arguments used:"); print(args)
 
     starttime=time.time()
     # Start Scanning
@@ -25,7 +25,7 @@ def main():
     printmsg(("Total scantime %.2f seconds") % (time.time()-starttime))
 
     for target in results:
-        print "%s TCP:%s  UDP:%s" % (target,results[target][0],results[target][1])
+        print("%s TCP:%s  UDP:%s" % (target,results[target][0],results[target][1]))
     return results
 
 def portscan(target,ports,tcp,udp,verbose):
@@ -41,9 +41,9 @@ def portscan(target,ports,tcp,udp,verbose):
                 s.connect((target, portnum))
             except Exception:
                 failvar = 0
-                if verbose: print "%d/tcp \tclosed" % (portnum)
+                if verbose: print("%d/tcp \tclosed" % (portnum))
             else:
-                if verbose: print "%d/tcp \topen"% (portnum)
+                if verbose: print("%d/tcp \topen" % (portnum))
                 tcpports.append(portnum)
             s.close()
     if udp:
@@ -51,22 +51,22 @@ def portscan(target,ports,tcp,udp,verbose):
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.settimeout(0.1)
-                s.sendto("--TEST LINE--", (target, portnum))
+                s.sendto(b"--TEST LINE--", (target, portnum))
                 recv, svr = s.recvfrom(255)
-            except Exception, e:
-                try: errno, errtxt = e
+            except Exception as e:
+                try: errno, errtxt = e.args
                 except ValueError:
-                    if verbose: print "%d/udp \topen"% (portnum)
+                    if verbose: print("%d/udp \topen" % (portnum))
                     udpports.append(portnum)
                 else:
-                    if verbose: print "%d/udp \tclosed" % (portnum)
+                    if verbose: print("%d/udp \tclosed" % (portnum))
             s.close()
     printmsg(("Scanned %s in %.2f seconds - Open: %iTCP, %iUDP" % \
                 (target,time.time()-targetstarttime,len(tcpports),len(udpports))))
     return tcpports, udpports
 
-def errormsg(msg): print "[!] Error: %s" % (msg) ; sys.exit(1)
-def printmsg(msg): print "[+] nmap.py: %s" % (msg)
+def errormsg(msg): print("[!] Error: %s" % (msg)); sys.exit(1)
+def printmsg(msg): print("[+] nmap.py: %s" % (msg))
 
 def iprange(addressrange): # converts a ip range into a list
     list=[]
