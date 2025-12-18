@@ -1,0 +1,46 @@
+meta {
+  name: Get VRFs
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{base_url}}/appcenter/cisco/ndfc/api/v1/lan-fabric/rest/top-down/fabrics/{{fabric_name}}/vrfs
+  body: none
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Accept: application/json
+}
+
+auth:basic {
+  username: {{ndfc_username}}
+  password: {{ndfc_password}}
+}
+
+vars:pre-request {
+  fabric_name: your_fabric_name
+}
+
+script:pre-request {
+  // Optional: Add any pre-request scripting here
+}
+
+script:post-response {
+  // Optional: Parse and display VRF information
+  if (res.status === 200) {
+    const vrfs = res.body;
+    console.log(`Found ${vrfs.length} VRFs`);
+  }
+}
+
+docs {
+  This request retrieves all VRFs configured in the specified NDFC fabric.
+  
+  Before running:
+  1. Update the ndfc_host in the environment (10.x.x.x)
+  2. Set your NDFC username and password
+  3. Update the fabric_name variable with your fabric name
+}
