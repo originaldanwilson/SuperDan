@@ -295,8 +295,14 @@ jobs:
     ])
     
     # Slide 18: Q&A
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    slide.shapes.title.text = "Questions & Discussion"
+    slide = prs.slides.add_slide(prs.slide_layouts[5])
+    title_box = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(8), Inches(2))
+    title_frame = title_box.text_frame
+    title_frame.text = "Questions & Discussion"
+    p = title_frame.paragraphs[0]
+    p.font.size = Pt(54)
+    p.font.bold = True
+    p.alignment = PP_ALIGN.CENTER
     
     # Save presentation
     prs.save('C:\\Users\\danda\\NaC_Transformation_Presentation.pptx')
