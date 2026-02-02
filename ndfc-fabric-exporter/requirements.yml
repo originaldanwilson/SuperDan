@@ -1,0 +1,10 @@
+---
+collections:
+  - name: cisco.dcnm
+    version: ">=3.0.0"
+  
+  - name: cisco.nd
+    version: ">=1.0.0"
+  
+  - name: ansible.utils
+    version: ">=2.10.0"

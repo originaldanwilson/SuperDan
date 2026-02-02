@@ -1,0 +1,17 @@
+---
+- name: Configure NDFC Fabric PROD_FABRIC
+  cisco.dcnm.dcnm_fabric:
+    state: merged
+    config:
+      - fabric_name: PROD_FABRIC
+        fabric_type: VXLAN_EVPN
+        fabric_template: Easy_Fabric
+        fabric_settings:
+          BGP_AS: '65000'
+          FABRIC_NAME: PROD_FABRIC
+          ANYCAST_GW_MAC: 0000.2222.3333
+          ENABLE_NETFLOW: false
+          FEATURE_PTP: false
+          REPLICATION_MODE: Multicast
+          UNDERLAY_IS_V6: false
+          ENABLE_NXAPI: true

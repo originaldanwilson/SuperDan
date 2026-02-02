@@ -1,0 +1,28 @@
+---
+- name: Configure VRFs for fabric PROD_FABRIC
+  cisco.dcnm.dcnm_vrf:
+    state: merged
+    fabric: PROD_FABRIC
+    config:
+      - fabric: PROD_FABRIC
+        vrf_name: Tenant-1
+        vrf_id: 50001
+        vlan_id: 2001
+        vrf_template: Default_VRF_Universal
+        vrf_extension_template: Default_VRF_Extension_Universal
+        attach:
+          - ip_address: 10.1.1.1
+            deploy: true
+          - ip_address: 10.1.1.2
+            deploy: true
+      - fabric: PROD_FABRIC
+        vrf_name: Tenant-2
+        vrf_id: 50002
+        vlan_id: 2002
+        vrf_template: Default_VRF_Universal
+        vrf_extension_template: Default_VRF_Extension_Universal
+        attach:
+          - ip_address: 10.1.1.1
+            deploy: true
+          - ip_address: 10.1.1.2
+            deploy: true

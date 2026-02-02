@@ -1,0 +1,11 @@
+{
+  "ndfc_host": "10.0.0.1",
+  "ndfc_username": "admin",
+  "ndfc_password": "your-password-here",
+  "verify_ssl": false,
+  "default_output_dir": "output",
+  "fabrics_to_export": [
+    "fabric1",
+    "fabric2"
+  ]
+}
