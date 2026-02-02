@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class NDFCClient:
     """Client for interacting with Cisco NDFC REST API."""
     
-    def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False):
+    def __init__(self, host: str, username: str, password: str, verify_ssl: bool = False, domain: str = "DefaultAuth"):
         """
         Initialize NDFC client.
         
@@ -26,11 +26,13 @@ class NDFCClient:
             username: NDFC username
             password: NDFC password
             verify_ssl: Whether to verify SSL certificates
+            domain: Authentication domain (DefaultAuth, local, tacacs, etc.)
         """
         self.host = host.rstrip('/')
         self.username = username
         self.password = password
         self.verify_ssl = verify_ssl
+        self.domain = domain
         self.token = None
         self.base_url = f"https://{self.host}/appcenter/cisco/ndfc/api/v1"
         self.session = requests.Session()
@@ -46,7 +48,7 @@ class NDFCClient:
         payload = {
             "userName": self.username,
             "userPasswd": self.password,
-            "domain": "local"
+            "domain": self.domain
         }
         
         try:

@@ -2,10 +2,12 @@
   "ndfc_host": "10.0.0.1",
   "ndfc_username": "admin",
   "ndfc_password": "your-password-here",
+  "ndfc_domain": "DefaultAuth",
   "verify_ssl": false,
   "default_output_dir": "output",
   "fabrics_to_export": [
     "fabric1",
     "fabric2"
-  ]
+  ],
+  "comment": "Valid domain values: DefaultAuth, local, tacacs"
 }

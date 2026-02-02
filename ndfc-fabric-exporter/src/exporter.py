@@ -41,10 +41,11 @@ def cli():
 @click.option('--host', required=True, help='NDFC controller hostname or IP')
 @click.option('--username', required=True, help='NDFC username')
 @click.option('--password', required=True, prompt=True, hide_input=True, help='NDFC password')
+@click.option('--domain', default='DefaultAuth', help='Authentication domain (DefaultAuth, local, tacacs)')
 @click.option('--verify-ssl/--no-verify-ssl', default=False, help='Verify SSL certificates')
-def list_fabrics(host, username, password, verify_ssl):
+def list_fabrics(host, username, password, domain, verify_ssl):
     """List all fabrics available in NDFC."""
-    client = NDFCClient(host, username, password, verify_ssl)
+    client = NDFCClient(host, username, password, verify_ssl, domain)
     
     if not client.login():
         console.print("[red]Failed to authenticate to NDFC[/red]")
@@ -81,14 +82,15 @@ def list_fabrics(host, username, password, verify_ssl):
 @click.option('--password', required=True, prompt=True, hide_input=True, help='NDFC password')
 @click.option('--fabric', required=True, help='Fabric name to export')
 @click.option('--output-dir', default='output', help='Output directory for generated files')
+@click.option('--domain', default='DefaultAuth', help='Authentication domain (DefaultAuth, local, tacacs)')
 @click.option('--verify-ssl/--no-verify-ssl', default=False, help='Verify SSL certificates')
 @click.option('--save-json/--no-save-json', default=True, help='Save raw JSON data')
-def export(host, username, password, fabric, output_dir, verify_ssl, save_json):
+def export(host, username, password, fabric, output_dir, domain, verify_ssl, save_json):
     """Export fabric configuration and generate Ansible YAML files."""
     console.print(f"[bold cyan]Exporting fabric: {fabric}[/bold cyan]")
     
     # Initialize NDFC client
-    client = NDFCClient(host, username, password, verify_ssl)
+    client = NDFCClient(host, username, password, verify_ssl, domain)
     
     if not client.login():
         console.print("[red]Failed to authenticate to NDFC[/red]")
