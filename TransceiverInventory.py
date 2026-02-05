@@ -113,12 +113,15 @@ class TransceiverInventory:
                     reader = csv.reader(file)
                     normalized_devices = []
                     for row in reader:
+                        self.logger.debug(f"CSV row: {row}")
                         if len(row) >= 4:
+                            device_type = row[3].strip().lower()
+                            self.logger.debug(f"Device: {row[0].strip()}, Type: '{device_type}'")
                             normalized_devices.append({
                                 'devicename': row[0].strip(),
                                 'ipaddr': row[1].strip(),
                                 'description': row[2].strip(),
-                                'devicetype': row[3].strip()
+                                'devicetype': device_type
                             })
                         elif len(row) >= 2:
                             # Minimum: devicename, ip - assume cisco_ios
@@ -126,8 +129,13 @@ class TransceiverInventory:
                                 'devicename': row[0].strip(),
                                 'ipaddr': row[1].strip(),
                                 'description': row[2].strip() if len(row) > 2 else '',
-                                'devicetype': row[3].strip() if len(row) > 3 else 'cisco_ios'
+                                'devicetype': row[3].strip().lower() if len(row) > 3 else 'cisco_ios'
                             })
+            
+            # Debug: show what was loaded
+            self.logger.info(f"Parsed {len(normalized_devices)} total rows from CSV")
+            if normalized_devices:
+                self.logger.info(f"First device: {normalized_devices[0]}")
             
             # Filter to only include cisco_ios and cisco_nxos devices
             supported_types = ['cisco_ios', 'cisco_nxos']
@@ -139,6 +147,10 @@ class TransceiverInventory:
             self.logger.info(f"Loaded {len(self.devices)} cisco_ios/cisco_nxos devices from {self.csv_file}")
             if skipped_count > 0:
                 self.logger.info(f"Skipped {skipped_count} devices with unsupported device types")
+                # Show what types were skipped
+                skipped_types = set(d.get('devicetype', 'EMPTY') for d in normalized_devices 
+                                   if d.get('devicetype', '').lower() not in supported_types)
+                self.logger.info(f"Skipped device types: {skipped_types}")
             
             return len(self.devices) > 0
             
