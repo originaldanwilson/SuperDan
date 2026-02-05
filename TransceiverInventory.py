@@ -46,7 +46,7 @@ class TransceiverInventory:
     
     def __init__(self, csv_file="freedevices.csv"):
         self.script_name = getScriptName()
-        setupLogging()
+        setupLogging(self.script_name)
         self.logger = logging.getLogger(__name__)
         self.csv_file = csv_file
         
