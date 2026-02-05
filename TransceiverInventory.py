@@ -81,26 +81,53 @@ class TransceiverInventory:
         
         try:
             with open(self.csv_file, 'r', encoding='utf-8-sig') as file:
-                reader = csv.DictReader(file)
-                all_devices = list(reader)
-            
-            # Normalize column names (handle various formats)
-            normalized_devices = []
-            for device in all_devices:
-                normalized = {}
-                for key, value in device.items():
-                    norm_key = key.strip().lower().replace(' ', '_').replace('addr', 'addr')
-                    # Handle common variations
-                    if 'device' in norm_key and 'name' in norm_key:
-                        norm_key = 'devicename'
-                    elif norm_key in ['ip', 'ip_addr', 'ipaddr', 'ip_address']:
-                        norm_key = 'ipaddr'
-                    elif norm_key in ['os', 'operating_system', 'device_type', 'devicetype']:
-                        norm_key = 'devicetype'
-                    elif norm_key in ['desc', 'description']:
-                        norm_key = 'description'
-                    normalized[norm_key] = value.strip() if value else ''
-                normalized_devices.append(normalized)
+                first_line = file.readline().strip()
+                file.seek(0)  # Reset to beginning
+                
+                # Check if first line looks like a header (contains common header keywords)
+                first_lower = first_line.lower()
+                has_header = any(keyword in first_lower for keyword in 
+                               ['devicename', 'device_name', 'hostname', 'ipaddr', 'ip_addr', 'devicetype'])
+                
+                if has_header:
+                    reader = csv.DictReader(file)
+                    all_devices = list(reader)
+                    # Normalize column names
+                    normalized_devices = []
+                    for device in all_devices:
+                        normalized = {}
+                        for key, value in device.items():
+                            norm_key = key.strip().lower().replace(' ', '_')
+                            if 'device' in norm_key and 'name' in norm_key:
+                                norm_key = 'devicename'
+                            elif norm_key in ['ip', 'ip_addr', 'ipaddr', 'ip_address']:
+                                norm_key = 'ipaddr'
+                            elif norm_key in ['os', 'operating_system', 'device_type', 'devicetype']:
+                                norm_key = 'devicetype'
+                            elif norm_key in ['desc', 'description']:
+                                norm_key = 'description'
+                            normalized[norm_key] = value.strip() if value else ''
+                        normalized_devices.append(normalized)
+                else:
+                    # No header - assume order: devicename, ipaddr, description, devicetype
+                    reader = csv.reader(file)
+                    normalized_devices = []
+                    for row in reader:
+                        if len(row) >= 4:
+                            normalized_devices.append({
+                                'devicename': row[0].strip(),
+                                'ipaddr': row[1].strip(),
+                                'description': row[2].strip(),
+                                'devicetype': row[3].strip()
+                            })
+                        elif len(row) >= 2:
+                            # Minimum: devicename, ip - assume cisco_ios
+                            normalized_devices.append({
+                                'devicename': row[0].strip(),
+                                'ipaddr': row[1].strip(),
+                                'description': row[2].strip() if len(row) > 2 else '',
+                                'devicetype': row[3].strip() if len(row) > 3 else 'cisco_ios'
+                            })
             
             # Filter to only include cisco_ios and cisco_nxos devices
             supported_types = ['cisco_ios', 'cisco_nxos']
