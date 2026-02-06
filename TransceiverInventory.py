@@ -10,7 +10,7 @@ Author: SuperDan Environment
 """
 
 from netmiko import ConnectHandler
-from tools import getScriptName, setupLogging, get_netmiko_creds, save_file_and_set_permissions
+from tools import getScriptName, setupLogging, get_netmiko_creds
 import logging
 import csv
 import re
@@ -407,9 +407,6 @@ class TransceiverInventory:
         
         # Save workbook
         wb.save(filename)
-        
-        # Set file permissions
-        save_file_and_set_permissions(filename, show_info=True)
         
         self.logger.info(f"Excel report generated: {filename}")
         return filename
