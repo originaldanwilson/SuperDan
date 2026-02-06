@@ -188,32 +188,32 @@ class TransceiverInventory:
             
             # Parse various fields
             elif current_interface:
-                # Type/transceiver type
+                # Type/transceiver type (e.g., "transceiver is present")
                 if 'transceiver is' in line.lower():
                     match = re.search(r'transceiver is\s+(.+)', line, re.IGNORECASE)
                     if match:
                         current_data['type'] = match.group(1).strip()
                 
-                # Cisco part number
+                # Cisco part number (e.g., "cisco part number is 10-3172-01")
                 elif 'cisco part number' in line.lower():
-                    match = re.search(r'cisco part number[:\s]+(\S+)', line, re.IGNORECASE)
+                    match = re.search(r'cisco part number\s+is\s+(\S+)', line, re.IGNORECASE)
                     if match:
                         current_data['cisco_part_number'] = match.group(1)
                 
-                # Cisco product id
-                elif 'cisco product id' in line.lower() or 'product id' in line.lower():
-                    match = re.search(r'(?:cisco )?product id[:\s]+(\S+)', line, re.IGNORECASE)
+                # Cisco product id (e.g., "cisco product id is QSFP-100G-SR4-S")
+                elif 'cisco product id' in line.lower():
+                    match = re.search(r'cisco product id\s+is\s+(\S+)', line, re.IGNORECASE)
                     if match:
                         current_data['cisco_product_id'] = match.group(1)
                 
-                # Serial number
+                # Serial number (e.g., "serial number is ABC1234567")
                 elif 'serial number' in line.lower():
-                    match = re.search(r'serial number[:\s]+(\S+)', line, re.IGNORECASE)
+                    match = re.search(r'serial number\s+is\s+(\S+)', line, re.IGNORECASE)
                     if match:
                         current_data['serial_number'] = match.group(1)
                 
-                # Name/description
-                elif 'name' in line.lower() and 'is' in line.lower():
+                # Name/vendor (e.g., "name is CISCO-FINISAR")
+                elif 'name is' in line.lower():
                     match = re.search(r'name\s+is\s+(.+)', line, re.IGNORECASE)
                     if match:
                         current_data['name'] = match.group(1).strip()
