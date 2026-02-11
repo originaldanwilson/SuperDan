@@ -1,0 +1,9 @@
+# CDP Mapper Device Inventory
+# Format: hostname,ip_address,device_type
+# Device types: cisco_nxos, cisco_xe, cisco_ios
+#
+# Example entries:
+core-switch1,192.168.1.1,cisco_nxos
+core-switch2,192.168.1.2,cisco_nxos
+dist-switch1,192.168.1.10,cisco_xe
+access-switch1,192.168.1.20,cisco_ios
