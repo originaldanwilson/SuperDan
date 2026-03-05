@@ -1,41 +1,25 @@
 """
 NX-OS Switch Configurator
-- Reads per-device command files from a commands/ directory
-- Sends each command individually, checking for errors after every command
-- Logs all output to per-device log files in a logs/ directory
-- Stops immediately on error and reports which command failed
+Sends commands to NX-OS switches one at a time, stops on any error.
 
-Usage:
-    python nxos_configure.py CHG0002222222 [--commands-dir commands] [--logs-dir logs] [--dry-run]
+Usage:  python nxos_configure.py CHG0002222222
 
-Directory structure:
-    commands/
-      CHG0002222222/
-        switch-core-01.txt
-        switch-access-05.txt
-      CHG0003333333/
-        switch-dist-02.txt
-
-Command file format (one command per line, blanks and # comments skipped).
-Credentials are loaded from tools.py (get_netmiko_creds).
+Put command files in:  commands/<change_number>/<switch_hostname>.txt
+One command per line.  Lines starting with # are skipped.
+Credentials come from tools.py.
+Log file goes to logs/nxos_configure_<timestamp>.log
 """
 
-import argparse
-import os
 import re
 import sys
 from pathlib import Path
+from netmiko import ConnectHandler
+from tools import netmikoUser, passwd, enable, setupLogging
 
-try:
-    from netmiko import ConnectHandler, NetmikoAuthenticationException, NetmikoTimeoutException
-except ImportError:
-    print("ERROR: netmiko is required. Install it with:  pip install netmiko")
-    sys.exit(1)
+logger = setupLogging()
 
-from tools import get_netmiko_creds, get_netmiko_device_config, setupLogging
-
-# NX-OS error patterns — add more as you encounter them
-NXOS_ERROR_PATTERNS = [
+# NX-OS error patterns
+ERROR_PATTERNS = [
     re.compile(r"% Invalid", re.IGNORECASE),
     re.compile(r"% Incomplete command", re.IGNORECASE),
     re.compile(r"% Ambiguous command", re.IGNORECASE),
@@ -52,173 +36,117 @@ NXOS_ERROR_PATTERNS = [
 ]
 
 
-# Initialize logger using tools.py — log file named after this script automatically
-logger = setupLogging()
-
-
-def check_for_errors(output: str) -> str | None:
-    """Return the first matching error line, or None if clean."""
+def check_for_errors(output):
     for line in output.splitlines():
-        for pattern in NXOS_ERROR_PATTERNS:
+        for pattern in ERROR_PATTERNS:
             if pattern.search(line):
                 return line.strip()
     return None
 
 
-def load_commands(filepath: Path) -> list[str]:
-    """Load commands from a file, skipping blanks and comments."""
+def load_commands(filepath):
     commands = []
     with open(filepath, "r", encoding="utf-8") as f:
         for raw in f:
             line = raw.strip()
-            if line and not line.startswith("#"):
+            if line and not line.startswith("#") and line != "!":
                 commands.append(line)
     return commands
 
 
-def configure_device(
-    hostname: str,
-    commands: list[str],
-    dry_run: bool = False,
-) -> bool:
-    """Configure a single device. Returns True on success, False on error."""
-
-    logger.info(f"Starting configuration for {hostname} ({len(commands)} commands)")
-
-    if dry_run:
-        logger.info("DRY RUN — commands that would be sent:")
-        for cmd in commands:
-            logger.info(f"  {cmd}")
-        return True
-
-    # Build device params from tools.py, override type to nxos
-    device_params = get_netmiko_device_config(hostname, device_type="cisco_nxos")
+def configure_device(hostname, commands):
+    """Connect, send commands one by one, stop on error. Returns True/False."""
+    logger.info(f"Connecting to {hostname} ({len(commands)} commands)")
 
     try:
-        conn = ConnectHandler(**device_params)
-    except NetmikoAuthenticationException:
-        logger.error(f"AUTHENTICATION FAILED for {hostname}")
-        return False
-    except NetmikoTimeoutException:
-        logger.error(f"CONNECTION TIMED OUT for {hostname}")
-        return False
+        conn = ConnectHandler(
+            device_type="cisco_nxos",
+            host=hostname,
+            username=netmikoUser,
+            password=passwd,
+            secret=enable,
+        )
     except Exception as e:
-        logger.error(f"CONNECTION ERROR for {hostname}: {e}")
+        logger.error(f"Failed to connect to {hostname}: {e}")
         return False
 
     logger.info(f"Connected to {hostname}")
     success = True
 
     try:
-        # Enter config mode
-        config_output = conn.config_mode()
-        logger.debug(f"Entered config mode:\n{config_output}")
-
+        conn.config_mode()
         for i, command in enumerate(commands, 1):
-            logger.info(f"[{i}/{len(commands)}] Sending: {command}")
-            output = conn.send_command_timing(
-                command,
-                strip_prompt=False,
-                strip_command=False,
-                delay_factor=2,
-            )
-            logger.info(f"COMMAND: {command}")
+            logger.info(f"[{i}/{len(commands)}] {command}")
+            output = conn.send_command_timing(command, strip_prompt=False, strip_command=False)
             logger.info(f"OUTPUT:\n{output}")
 
-            error_line = check_for_errors(output)
-            if error_line:
-                logger.error(f"ERROR DETECTED on command {i}/{len(commands)}: {command}")
-                logger.error(f"  Error: {error_line}")
-                logger.error("Stopping — no further commands will be sent to this device.")
+            error = check_for_errors(output)
+            if error:
+                logger.error(f"FAILED on command {i}/{len(commands)}: {command}")
+                logger.error(f"  {error}")
                 success = False
                 break
 
-        # Exit config mode regardless
-        exit_output = conn.exit_config_mode()
-        logger.debug(f"Exited config mode:\n{exit_output}")
-
+        conn.exit_config_mode()
     except Exception as e:
-        logger.error(f"UNEXPECTED ERROR during configuration: {e}")
+        logger.error(f"Unexpected error on {hostname}: {e}")
         success = False
     finally:
         conn.disconnect()
         logger.info(f"Disconnected from {hostname}")
 
     if success:
-        logger.info(f"All {len(commands)} commands completed successfully on {hostname}")
-
+        logger.info(f"All {len(commands)} commands OK on {hostname}")
     return success
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Configure NX-OS switches from per-device command files.")
-    parser.add_argument("change_number", help="Change number (e.g. CHG0002222222)")
-    parser.add_argument("--commands-dir", default="commands", help="Root commands directory (default: commands/)")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be sent without connecting")
-    parser.add_argument("--devices", nargs="*", help="Only configure these devices (by filename without .txt)")
-    args = parser.parse_args()
+    if len(sys.argv) != 2:
+        print("Usage:  python nxos_configure.py CHG0002222222")
+        sys.exit(1)
 
-    change = args.change_number
-    commands_dir = Path(args.commands_dir) / change
+    change = sys.argv[1]
+    commands_dir = Path("commands") / change
 
     if not commands_dir.is_dir():
-        logger.error(f"Change directory not found: {commands_dir}")
-        logger.error(f"Create it and add one .txt file per device, e.g. {commands_dir}/switch1.txt")
+        logger.error(f"Directory not found: {commands_dir}")
         sys.exit(1)
 
-    logger.info(f"Change: {change}")
-
-    # Discover device files
     device_files = sorted(commands_dir.glob("*.txt"))
     if not device_files:
-        logger.error(f"No .txt files found in {commands_dir}/")
+        logger.error(f"No .txt files in {commands_dir}")
         sys.exit(1)
 
-    # Filter to specific devices if requested
-    if args.devices:
-        device_files = [f for f in device_files if f.stem in args.devices]
-        if not device_files:
-            logger.error(f"None of the specified devices found in {commands_dir}/")
-            sys.exit(1)
-
-    # Show what we found
-    logger.info(f"Devices to configure ({len(device_files)}):")
+    logger.info(f"Change: {change} — {len(device_files)} device(s)")
     for df in device_files:
-        cmds = load_commands(df)
-        logger.info(f"  {df.stem:30s}  ({len(cmds)} commands)")
+        logger.info(f"  {df.stem}  ({len(load_commands(df))} commands)")
 
-    # Process each device
+    # Configure each device, stop on first failure
     results = {}
     for df in device_files:
         hostname = df.stem
         commands = load_commands(df)
         if not commands:
-            logger.warning(f"Skipping {hostname} — no commands in file")
+            logger.warning(f"Skipping {hostname} — empty file")
             continue
 
-        logger.info("=" * 60)
-        ok = configure_device(hostname, commands, args.dry_run)
+        ok = configure_device(hostname, commands)
         results[hostname] = ok
-
-        if not ok and not args.dry_run:
-            logger.error(f"STOPPED on {hostname} due to error.")
+        if not ok:
             remaining = [f.stem for f in device_files if f.stem not in results]
             if remaining:
-                logger.warning(f"Skipped devices: {', '.join(remaining)}")
+                logger.warning(f"Skipped: {', '.join(remaining)}")
             break
 
     # Summary
-    logger.info("=" * 60)
     logger.info("SUMMARY:")
     for host, ok in results.items():
-        status = "SUCCESS" if ok else "FAILED"
-        logger.info(f"  {host:30s}  {status}")
+        logger.info(f"  {host}: {'SUCCESS' if ok else 'FAILED'}")
+    for f in device_files:
+        if f.stem not in results:
+            logger.info(f"  {f.stem}: SKIPPED")
 
-    skipped = [f.stem for f in device_files if f.stem not in results]
-    for host in skipped:
-        logger.info(f"  {host:30s}  SKIPPED")
-
-    if any(not ok for ok in results.values()):
+    if any(not v for v in results.values()):
         sys.exit(1)
 
 
