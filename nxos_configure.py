@@ -10,6 +10,7 @@ Credentials come from tools.py.
 Log file goes to logs/nxos_configure_<timestamp>.log
 """
 
+import logging
 import re
 import sys
 from datetime import datetime
@@ -19,7 +20,8 @@ from tools import get_netmiko_creds, getScriptName, setupLogging
 
 scriptName = getScriptName()
 timestamp = datetime.now().strftime('%Y%m%d_%H%M')
-logger = setupLogging(scriptName, timestamp)
+log_path = setupLogging(scriptName, timestamp)
+logger = logging.getLogger(__name__)
 netmikoUser, passwd, enable = get_netmiko_creds()
 
 # NX-OS error patterns
@@ -168,7 +170,7 @@ def main():
         print(f"  FAILED:    {', '.join(failed)}")
     if skipped:
         print(f"  SKIPPED:   {', '.join(skipped)}")
-    print(f"\n  Log file:  {logger.handlers[0].baseFilename}")
+    print(f"\n  Log file:  {log_path}")
     print(f"{'='*60}")
 
     logger.info("SUMMARY:")
