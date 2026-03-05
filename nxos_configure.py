@@ -12,11 +12,14 @@ Log file goes to logs/nxos_configure_<timestamp>.log
 
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from netmiko import ConnectHandler
-from tools import get_netmiko_creds, setupLogging
+from tools import get_netmiko_creds, getScriptName, setupLogging
 
-logger = setupLogging()
+scriptName = getScriptName()
+timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+logger = setupLogging(scriptName, timestamp)
 netmikoUser, passwd, enable = get_netmiko_creds()
 
 # NX-OS error patterns
