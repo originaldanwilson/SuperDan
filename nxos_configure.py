@@ -14,9 +14,10 @@ import re
 import sys
 from pathlib import Path
 from netmiko import ConnectHandler
-from tools import netmikoUser, passwd, enable, setupLogging
+from tools import get_netmiko_creds, setupLogging
 
 logger = setupLogging()
+netmikoUser, passwd, enable = get_netmiko_creds()
 
 # NX-OS error patterns
 ERROR_PATTERNS = [
