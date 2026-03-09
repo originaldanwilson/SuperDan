@@ -39,6 +39,56 @@ logger = logging.getLogger(__name__)
 netmikoUser, passwd, enable = get_netmiko_creds()
 
 
+# ── Excluded interfaces (uplinks / infrastructure) ──────────
+# Physical ports and port-channels to skip when collecting MACs.
+# Port-channels that these interfaces belong to are auto-discovered.
+EXCLUDE_INTERFACES = [
+    "Eth1/25",
+    "Eth1/49",
+    "Eth1/50",
+    "Eth1/51",
+    "Eth1/52",
+    "port-channel1",
+]
+
+
+def normalize_interface(name):
+    """Normalise an interface name to its short lower-case form.
+
+    Ethernet1/49 -> eth1/49 ,  port-channel1 -> po1 ,  Po1 -> po1
+    """
+    n = name.lower().strip()
+    n = re.sub(r'^ethernet', 'eth', n)
+    n = re.sub(r'^port-channel', 'po', n)
+    return n
+
+
+def build_exclusion_set(conn, hostname, base_excludes):
+    """Return a set of normalised interface names to skip.
+
+    For every physical interface in *base_excludes*, run
+    ``show running-config interface`` to check for channel-group
+    membership and add the corresponding port-channel automatically.
+    """
+    excludes = {normalize_interface(i) for i in base_excludes}
+
+    for intf in base_excludes:
+        norm = normalize_interface(intf)
+        if not norm.startswith("eth"):
+            continue
+        logger.info(f"Checking port-channel membership for {intf}")
+        output = conn.send_command(f"show running-config interface {intf}")
+        m = re.search(r'channel-group\s+(\d+)', output)
+        if m:
+            pc = m.group(1)
+            excludes.add(f"po{pc}")
+            logger.info(f"  {intf} -> port-channel{pc}  (added to exclusions)")
+            print(f"    {intf} is member of port-channel{pc} — excluded")
+
+    logger.info(f"Full exclusion set: {sorted(excludes)}")
+    return excludes
+
+
 # ── Device helpers ──────────────────────────────────────────
 def connect_nxos(hostname):
     """Connect to an NX-OS device via netmiko."""
@@ -59,8 +109,11 @@ def connect_nxos(hostname):
         return None
 
 
-def get_local_mac_addresses(conn, hostname):
+def get_local_mac_addresses(conn, hostname, exclude_ports=None):
     """Collect locally learned dynamic MAC addresses from an NX-OS L2 switch.
+
+    Args:
+        exclude_ports: set of normalised interface names to skip
 
     Returns:
         list[dict]: [{mac, vlan, port}, ...]
@@ -83,17 +136,22 @@ def get_local_mac_addresses(conn, hostname):
         r'(\S+)'                                                        # Port
     )
 
+    skipped = 0
     for line in output.splitlines():
         m = pattern.search(line)
         if m and m.group(3).lower() == "dynamic":
+            port = m.group(4)
+            if exclude_ports and normalize_interface(port) in exclude_ports:
+                skipped += 1
+                continue
             entries.append({
                 "mac":  m.group(2).lower(),
                 "vlan": m.group(1),
-                "port": m.group(4),
+                "port": port,
             })
 
-    logger.info(f"{len(entries)} dynamic local MACs on {hostname}")
-    print(f"  {len(entries)} dynamic local MAC addresses found")
+    logger.info(f"{len(entries)} dynamic local MACs on {hostname} ({skipped} excluded)")
+    print(f"  {len(entries)} dynamic local MAC addresses found ({skipped} excluded on uplink/infra ports)")
     return entries
 
 
@@ -257,13 +315,15 @@ def main():
     print(f"  L3 Switch: {args.l3_switch}")
     print(f"{'='*60}")
 
-    # 1 – L2: collect local MAC addresses
-    print(f"\n[1/4] Collecting MACs from {args.l2_switch}")
+    # 1 – L2: collect local MAC addresses (with exclusions)
+    print(f"\n[1/5] Connecting to {args.l2_switch} and building exclusion set")
     l2 = connect_nxos(args.l2_switch)
     if not l2:
         sys.exit(1)
     try:
-        macs = get_local_mac_addresses(l2, args.l2_switch)
+        exclude = build_exclusion_set(l2, args.l2_switch, EXCLUDE_INTERFACES)
+        print(f"\n[2/5] Collecting MACs from {args.l2_switch}")
+        macs = get_local_mac_addresses(l2, args.l2_switch, exclude_ports=exclude)
     finally:
         l2.disconnect()
         logger.info(f"Disconnected from {args.l2_switch}")
@@ -272,8 +332,8 @@ def main():
         print("  No local dynamic MACs found. Nothing to do.")
         sys.exit(0)
 
-    # 2 – L3: collect ARP table
-    print(f"\n[2/4] Collecting ARP from {args.l3_switch}")
+    # 3 – L3: collect ARP table
+    print(f"\n[3/5] Collecting ARP from {args.l3_switch}")
     l3 = connect_nxos(args.l3_switch)
     if not l3:
         sys.exit(1)
@@ -283,15 +343,15 @@ def main():
         l3.disconnect()
         logger.info(f"Disconnected from {args.l3_switch}")
 
-    # 3 – Correlate MAC→IP  and run DNS lookups
-    print(f"\n[3/4] DNS lookups")
+    # 4 – Correlate MAC→IP  and run DNS lookups
+    print(f"\n[4/5] DNS lookups")
     rows = correlate(macs, arp, args.l2_switch, args.l3_switch)
 
     resolved_ip  = sum(1 for r in rows if r["ip"]  != "N/A")
     resolved_dns = sum(1 for r in rows if r["dns"] != "N/A")
 
-    # 4 – Write Excel
-    print(f"\n[4/4] Writing report")
+    # 5 – Write Excel
+    print(f"\n[5/5] Writing report")
     filename = write_excel(rows, args.l2_switch)
 
     print(f"\n{'='*60}")
