@@ -1,0 +1,5 @@
+[
+  {"Display Name": "switch1.company.com", "IP_Address": "10.10.10.10", "MachineType": "Cisco Catalyst 9470R Switch", "IOSIMAGE": "CAT9K_IOSXE"},
+  {"Display Name": "switch2.company.com", "IP_Address": "10.10.10.11", "MachineType": "Cisco Nexus 9000", "IOSIMAGE": "NXOS"},
+  {"Display Name": "fw1.company.com", "IP_Address": "10.10.10.12", "MachineType": "Palo Alto Firewall", "IOSIMAGE": "PANOS"}
+]
