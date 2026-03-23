@@ -46,14 +46,42 @@ class Device:
     ping_by_name: Optional[PingResult] = field(default=None, repr=False)
     ping_by_ip: Optional[PingResult] = field(default=None, repr=False)
 
+    # Map our fields to possible JSON key variations (checked case-insensitively)
+    _KEY_MAP = {
+        "display_name": ["display name", "displayname", "caption", "nodename", "node_name", "hostname"],
+        "ip_address":   ["ip_address", "ipaddress", "ip address", "ip", "managementip"],
+        "machine_type": ["machinetype", "machine_type", "machine type", "devicetype", "vendor", "model", "sysobjectid"],
+        "ios_image":    ["iosimage", "ios_image", "ios image", "software", "osversion", "firmware"],
+    }
+
+    @staticmethod
+    def _find_key(d: dict, candidates: list[str]) -> str | None:
+        """Find the first matching key in d (case-insensitive)."""
+        lower_map = {k.lower(): k for k in d}
+        for candidate in candidates:
+            if candidate in lower_map:
+                return lower_map[candidate]
+        return None
+
     @classmethod
     def from_dict(cls, d: dict) -> "Device":
-        return cls(
-            display_name=d["Display Name"],
-            ip_address=d["IP_Address"],
-            machine_type=d["MachineType"],
-            ios_image=d["IOSIMAGE"],
-        )
+        resolved = {}
+        missing = []
+        for field_name, candidates in cls._KEY_MAP.items():
+            key = cls._find_key(d, candidates)
+            if key is not None:
+                resolved[field_name] = d[key]
+            else:
+                missing.append(field_name)
+
+        if missing:
+            print(f"\n  WARNING: Could not map fields: {missing}")
+            print(f"  Available keys in JSON: {list(d.keys())}")
+            # Fill missing fields with 'UNKNOWN' so it still runs
+            for m in missing:
+                resolved[m] = "UNKNOWN"
+
+        return cls(**resolved)
 
 
 def ping(target: str, target_type: str, count: int = 2, timeout: int = 2) -> PingResult:
@@ -116,10 +144,35 @@ def ping_device(device: Device) -> Device:
 
 
 def load_devices(json_path: str) -> list[Device]:
-    """Load device list from a JSON file."""
+    """Load device list from a JSON file.
+
+    Handles three common formats:
+      1. A bare JSON array:   [{...}, {...}, ...]
+      2. An object with one key whose value is the array:
+         {"results": [{...}, {...}, ...]}
+      3. An object with multiple keys — looks for the first
+         key whose value is a list of dicts.
+    """
     with open(json_path, "r") as f:
         data = json.load(f)
-    return [Device.from_dict(entry) for entry in data]
+
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        # Find the first value that is a list of dicts
+        items = None
+        for key, val in data.items():
+            if isinstance(val, list) and val and isinstance(val[0], dict):
+                items = val
+                print(f"  Using key '{key}' from JSON ({len(val)} entries)")
+                break
+        if items is None:
+            sys.exit(f"ERROR: Could not find a device list in {json_path}. "
+                     f"Top-level keys: {list(data.keys())}")
+    else:
+        sys.exit(f"ERROR: Unexpected JSON type: {type(data).__name__}")
+
+    return [Device.from_dict(entry) for entry in items]
 
 
 def write_xlsx(devices: list[Device], output_path: str) -> None:
