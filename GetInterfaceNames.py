@@ -33,8 +33,9 @@ def get_interface_names(switch, netmikoUser, passwd):
         return []
 
 def main():
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
     scriptName = getScriptName()
-    setupLogging(scriptName)
+    setupLogging(scriptName, timestamp)
     logging.info(f"{scriptName} started")
 
     netmikoUser, passwd, enable = get_netmiko_creds()
