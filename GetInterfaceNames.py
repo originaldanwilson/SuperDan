@@ -1,9 +1,10 @@
 import logging
+import csv
 from datetime import datetime
 from netmiko import ConnectHandler
 from tools import getScriptName, setupLogging, get_netmiko_creds
 
-def get_interface_names(switch, netmikoUser, passwd):
+def collect_interface_names(switch, writer, netmikoUser, passwd):
     device = {
         "device_type": "cisco_nxos",
         "host": switch,
@@ -21,16 +22,17 @@ def get_interface_names(switch, netmikoUser, passwd):
         conn.disconnect()
 
         if isinstance(output, list):
-            names = [entry.get("port", "") for entry in output if entry.get("port")]
-            logging.info(f"{switch}: found {len(names)} interfaces")
-            return names
+            for entry in output:
+                intf = entry.get("port", "")
+                desc = entry.get("description", "")
+                if intf:
+                    writer.writerow([switch, intf, desc])
+            logging.info(f"{switch}: found {len(output)} interfaces")
         else:
             logging.warning(f"{switch}: TextFSM parse failed, got raw string")
-            return []
 
     except Exception as e:
         logging.error(f"Failed to query {switch}: {e}")
-        return []
 
 def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M")
@@ -46,11 +48,15 @@ def main():
         # Add your 5596 hostnames or IPs here
     ]
 
-    for switch in nxos_switches:
-        names = get_interface_names(switch, netmikoUser, passwd)
-        print(f"\n--- {switch} ---")
-        for name in names:
-            print(name)
+    outfile = f"{scriptName}_{timestamp}.csv"
+    with open(outfile, "w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Switch", "Interface", "Description"])
+
+        for switch in nxos_switches:
+            collect_interface_names(switch, writer, netmikoUser, passwd)
+
+    print(f"Interface data saved to: {outfile}")
 
 if __name__ == "__main__":
     main()
