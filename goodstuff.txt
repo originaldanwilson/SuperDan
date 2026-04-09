@@ -1,0 +1,307 @@
+# Example: dev repo workflow that promotes to prod
+name: Promote to Prod
+on:
+  push:
+    branches: [main]
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate YAML configs
+        run: yamllint configs/
+
+      - name: Trigger prod repo workflow
+        run: |
+          gh api repos/your-org/prod-repo/dispatches \
+            -f event_type=config-update \
+            -f client_payload[sha]=${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ secrets.PROD_REPO_PAT }}
+
+
+
+# Example: prod repo workflow that triggers AAP
+name: Deploy Config
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, network-runner]  # see runner section below
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger AAP Job Template
+        run: |
+          curl -sk -X POST \
+            "https://aap.yourcompany.com/api/v2/job_templates/42/launch/" \
+            -H "Authorization: Bearer $AAP_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"extra_vars": {"config_repo_sha": "${{ github.sha }}"}}'
+        env:
+          AAP_TOKEN: ${{ secrets.AAP_OAUTH_TOKEN }}
+
+
+presume this environment: github a dev repo and a prod repo.  In those are YAML representations of the configurations for cisco devices and palo alto ION devices.  process is to check out a config from dev, make changes to it in vS Code, commit it to dev.  something, perhaps github actions the promotes it to the PROD repo. once it commits to the PROD repo, github actions does something.  Also assume Ansible AAP will be called by something in github actions, and an ansible job will kick off.  I am interested in how to setup the github actions, what is involved in that? Certs? Runners?  and how exactly will we take the device configuration and make an ansible job to put the configuration on live cisco switches or IONs. 
+
+This is a solid GitOps pattern for network automation. Here's a breakdown of the full pipeline and the key decisions/components involved.
+
+---
+
+## 1. GitHub Actions — Promotion from Dev to Prod
+
+You have two main trigger points:
+
+**Dev repo — on push/merge to `main`:**
+- Run linting/validation on the YAML configs (e.g. `yamllint`, schema validation, maybe a custom script that checks config sanity)
+- If validation passes, open a PR or push to the Prod repo
+
+**Promotion mechanism (dev → prod) — two common approaches:**
+
+- **Cross-repo PR via `gh` CLI or API:** A GitHub Actions workflow in dev uses a Personal Access Token (PAT) or GitHub App token to clone the prod repo, copy the changed configs, and open a PR.
+- **Repository dispatch:** Dev repo sends a `repository_dispatch` event to prod repo, which triggers a workflow there to pull the latest configs.
+
+```yaml
+# Example: dev repo workflow that promotes to prod
+name: Promote to Prod
+on:
+  push:
+    branches: [main]
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate YAML configs
+        run: yamllint configs/
+
+      - name: Trigger prod repo workflow
+        run: |
+          gh api repos/your-org/prod-repo/dispatches \
+            -f event_type=config-update \
+            -f client_payload[sha]=${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ secrets.PROD_REPO_PAT }}
+```
+**Prod repo — on push/merge to `main` (or on `repository_dispatch`):**
+- Triggers the Ansible AAP job
+
+---
+
+## 2. GitHub Actions — Triggering Ansible AAP
+
+AAP (formerly Tower) exposes a REST API. Your prod repo workflow calls it to launch a job template.
+
+```yaml
+# Example: prod repo workflow that triggers AAP
+name: Deploy Config
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, network-runner]  # see runner section below
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger AAP Job Template
+        run: |
+          curl -sk -X POST \
+            "https://aap.yourcompany.com/api/v2/job_templates/42/launch/" \
+            -H "Authorization: Bearer $AAP_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"extra_vars": {"config_repo_sha": "${{ github.sha }}"}}'
+        env:
+          AAP_TOKEN: ${{ secrets.AAP_OAUTH_TOKEN }}
+```
+Key points:
+- **Authentication to AAP:** Use an OAuth2 token or a PAT stored as a GitHub Actions secret (`secrets.AAP_OAUTH_TOKEN`). You create this token in AAP under your service account.
+- You pass `extra_vars` to tell the Ansible job which commit/configs to pull.
+
+---
+
+## 3. Runners — GitHub-Hosted vs. Self-Hosted
+
+This is a critical decision:
+
+**GitHub-hosted runners** work if:
+- AAP is publicly reachable (unlikely in most enterprises)
+- You don't need direct network access to devices
+
+**Self-hosted runners** (most likely what you need):
+- A VM or container inside your network that can reach AAP and optionally the network devices
+- Registered with GitHub via `actions-runner` agent
+- You label it (e.g. `self-hosted, network-runner`) and target it in workflows with `runs-on`
+- Runs behind your firewall, so it can reach AAP's API without exposing AAP to the internet
+- **Security:** Lock the runner to specific repos, use runner groups, keep it patched
+
+**Setup is straightforward:** Go to repo Settings → Actions → Runners → New self-hosted runner, follow the install script. It's a lightweight agent.
+
+---
+
+## 4. Secrets and Certs
+
+| What                        | Where                                | Purpose                                                                                 |
+| --------------------------- | ------------------------------------ | --------------------------------------------------------------------------------------- |
+| **PAT or GitHub App token** | Dev repo `secrets`                   | Cross-repo access (dev → prod promotion)                                                |
+| **AAP OAuth token**         | Prod repo `secrets`                  | Authenticate to AAP REST API                                                            |
+| **TLS/CA certs**            | Self-hosted runner                   | If AAP uses internal CA, install the CA cert on the runner so `curl`/API calls trust it |
+| **Ansible vault password**  | AAP credential store                 | If you encrypt sensitive vars in the YAML configs                                       |
+| **Device credentials**      | AAP credential store (NOT in GitHub) | SSH keys or username/password for Cisco/ION devices                                     |
+**You do NOT need special certs for GitHub Actions itself.** The main cert concern is if your AAP instance uses an internal/self-signed TLS certificate — your self-hosted runner needs to trust that CA.
+
+---
+
+## 5. Ansible — Turning YAML Configs into Device Configuration
+
+This is the core "last mile" piece. The pattern:
+
+### a) AAP Job Template Setup
+- **Project:** Points to the prod repo (AAP syncs it via git)
+- **Inventory:** Your Cisco switches and ION devices (can be static in AAP or dynamic)
+- **Credential:** Network device credentials (stored in AAP, never in git)
+- **Job Template:** Ties project + inventory + credential + playbook together
+
+### b) Playbook Structure
+
+The playbook reads your YAML config files and applies them to devices using the appropriate Ansible modules:
+
+**For Cisco IOS/NX-OS switches:**
+```yaml
+# playbooks/deploy_cisco.yml
+- name: Deploy Cisco switch configs
+  hosts: cisco_switches
+  gather_facts: no
+  connection: ansible.netcommon.network_cli
+
+  tasks:
+    - name: Load device-specific config
+      include_vars:
+        file: "configs/cisco/{{ inventory_hostname }}.yml"
+        name: device_config
+
+    - name: Apply VLANs
+      cisco.ios.ios_vlans:
+        config: "{{ device_config.vlans }}"
+        state: replaced
+
+    - name: Apply interfaces
+      cisco.ios.ios_interfaces:
+        config: "{{ device_config.interfaces }}"
+        state: replaced
+
+    - name: Apply full running config (alternative — push raw config)
+      cisco.ios.ios_config:
+        src: "templates/cisco/{{ inventory_hostname }}.j2"
+      when: device_config.use_template | default(false)
+```
+**For Palo Alto Prisma SD-WAN (ION):**
+```yaml
+# playbooks/deploy_ion.yml
+- name: Deploy ION configs
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Load ION config
+      include_vars:
+        file: "configs/ion/{{ ion_device }}.yml"
+        name: ion_config
+
+    - name: Push ION config via API
+      uri:
+        url: "https://api.sase.paloaltonetworks.com/sdwan/v2.0/api/sites/{{ ion_config.site_id }}/elements/{{ ion_config.element_id }}"
+        method: PUT
+        headers:
+          Authorization: "Bearer {{ prisma_token }}"
+        body_format: json
+        body: "{{ ion_config.config_payload }}"
+        status_code: 200
+```
+ION devices are typically managed via the Prisma SD-WAN API (cloud-managed), not SSH. So Ansible uses `uri` module or a custom collection to push configs via REST.
+
+### c) YAML Config File Structure (example)
+
+```yaml
+# configs/cisco/switch-dc1-01.yml
+hostname: switch-dc1-01
+vlans:
+  - vlan_id: 10
+    name: MGMT
+  - vlan_id: 20
+    name: PROD
+interfaces:
+  - name: GigabitEthernet0/1
+    description: Uplink to core
+    enabled: true
+    mode: trunk
+    trunk_allowed_vlans: "10,20"
+```
+---
+
+## 6. End-to-End Flow Summary
+
+```
+Developer edits YAML in VS Code
+       ↓
+  git push to Dev repo
+       ↓
+  GitHub Actions (dev): validate YAML → trigger prod repo
+       ↓
+  PR or push lands in Prod repo
+       ↓
+  GitHub Actions (prod): self-hosted runner calls AAP REST API
+       ↓
+  AAP syncs prod repo → launches job template
+       ↓
+  Ansible playbook reads YAML configs → pushes to devices
+       ↓
+  Cisco switches configured via network_cli / ios modules
+  ION devices configured via Prisma SD-WAN REST API
+```
+---
+
+
+# playbooks/deploy_cisco.yml
+- name: Deploy Cisco switch configs
+  hosts: cisco_switches
+  gather_facts: no
+  connection: ansible.netcommon.network_cli
+
+  tasks:
+    - name: Load device-specific config
+      include_vars:
+        file: "configs/cisco/{{ inventory_hostname }}.yml"
+        name: device_config
+
+    - name: Apply VLANs
+      cisco.ios.ios_vlans:
+        config: "{{ device_config.vlans }}"
+        state: replaced
+
+    - name: Apply interfaces
+      cisco.ios.ios_interfaces:
+        config: "{{ device_config.interfaces }}"
+        state: replaced
+
+    - name: Apply full running config (alternative — push raw config)
+      cisco.ios.ios_config:
+        src: "templates/cisco/{{ inventory_hostname }}.j2"
+      when: device_config.use_template | default(false)
+
+## Key Decisions You Need to Make
+
+1. **Promotion model:** Automated push vs. PR-based approval gate into prod?
+2. **Config granularity:** One YAML file per device, or per-site, or per-feature?
+3. **Declarative vs. raw config:** Use structured Ansible resource modules (`ios_vlans`, `ios_interfaces`) or push raw config blocks via `ios_config`? Resource modules are safer (idempotent), raw config is simpler to start with.
+4. **ION management path:** Prisma SD-WAN API, or does your org have a different controller?
+5. **Drift detection:** Do you want a scheduled job that compares live device state to the YAML configs and alerts on drift?
+
+Want me to scaffold out the actual repo structure, GitHub Actions workflows, or Ansible playbooks for this?
