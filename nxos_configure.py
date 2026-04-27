@@ -1,8 +1,13 @@
 """
 NX-OS Switch Configurator
-Sends commands to NX-OS switches one at a time, stops on any error.
+Sends commands to NX-OS switches.  Each device stops on its first error.
+Devices are configured concurrently by default; use --serial for the
+original one-at-a-time, stop-on-first-failure behavior.
 
-Usage:  python nxos_configure.py CHG0002222222
+Usage:
+    python nxos_configure.py CHG0002222222
+    python nxos_configure.py CHG0002222222 --workers 16
+    python nxos_configure.py CHG0002222222 --serial
 
 Put command files in:  commands/<change_number>/<switch_hostname>.txt
 One command per line.  Lines starting with # are skipped.
@@ -10,9 +15,11 @@ Credentials come from tools.py.
 Log file goes to logs/nxos_configure_<timestamp>.log
 """
 
+import argparse
 import logging
 import re
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 from netmiko import ConnectHandler
@@ -61,8 +68,13 @@ def load_commands(filepath):
 
 
 def configure_device(hostname, commands):
-    """Connect, send commands one by one, stop on error. Returns True/False."""
-    print(f"\nWorking on {hostname} ({len(commands)} commands)...")
+    """Connect, send commands one by one, stop on error.
+
+    Returns a tuple (success, output_lines).  output_lines is a list of
+    strings that the caller is expected to print as a single block so
+    multi-threaded runs don't interleave per-device output.
+    """
+    output_lines = [f"\nWorking on {hostname} ({len(commands)} commands)..."]
     logger.info(f"Connecting to {hostname} ({len(commands)} commands)")
 
     try:
@@ -74,9 +86,9 @@ def configure_device(hostname, commands):
             secret=enable,
         )
     except Exception as e:
-        print(f"  *** FAILED to connect to {hostname}: {e}")
+        output_lines.append(f"  *** FAILED to connect to {hostname}: {e}")
         logger.error(f"Failed to connect to {hostname}: {e}")
-        return False
+        return False, output_lines
 
     logger.info(f"Connected to {hostname}")
     success = True
@@ -84,14 +96,14 @@ def configure_device(hostname, commands):
     try:
         conn.config_mode()
         for i, command in enumerate(commands, 1):
-            print(f"  [{i}/{len(commands)}] {command}")
+            output_lines.append(f"  [{i}/{len(commands)}] {command}")
             logger.info(f"[{i}/{len(commands)}] {command}")
             output = conn.send_command_timing(command, strip_prompt=False, strip_command=False)
             logger.info(f"OUTPUT:\n{output}")
 
             error = check_for_errors(output)
             if error:
-                print(f"  *** ERROR on command {i}: {error}")
+                output_lines.append(f"  *** ERROR on command {i}: {error}")
                 logger.error(f"FAILED on command {i}/{len(commands)}: {command}")
                 logger.error(f"  {error}")
                 success = False
@@ -99,27 +111,107 @@ def configure_device(hostname, commands):
 
         conn.exit_config_mode()
     except Exception as e:
-        print(f"  *** Unexpected error: {e}")
+        output_lines.append(f"  *** Unexpected error: {e}")
         logger.error(f"Unexpected error on {hostname}: {e}")
         success = False
     finally:
-        conn.disconnect()
+        try:
+            conn.disconnect()
+        except Exception as e:
+            logger.warning(f"Error during disconnect from {hostname}: {e}")
         logger.info(f"Disconnected from {hostname}")
 
     if success:
-        print(f"  Completed {hostname} successfully.")
+        output_lines.append(f"  Completed {hostname} successfully.")
         logger.info(f"All {len(commands)} commands OK on {hostname}")
     else:
-        print(f"  *** {hostname} FAILED. Stopping.")
-    return success
+        output_lines.append(f"  *** {hostname} FAILED.")
+    return success, output_lines
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Push NX-OS configuration to one or more switches.",
+    )
+    parser.add_argument(
+        "change",
+        help="Change number / directory name under commands/ (e.g. CHG0002222222)",
+    )
+    parser.add_argument(
+        "-w", "--workers",
+        type=int,
+        default=8,
+        help="Maximum number of devices to configure concurrently (default: 8).",
+    )
+    parser.add_argument(
+        "--serial",
+        action="store_true",
+        help="Run devices one at a time and stop on the first failure "
+             "(original behavior).",
+    )
+    args = parser.parse_args(argv)
+    if args.workers < 1:
+        parser.error("--workers must be >= 1")
+    if args.serial:
+        args.workers = 1
+    return args
+
+
+def run_serial(device_jobs):
+    """Original one-at-a-time, stop-on-first-failure behavior.
+
+    device_jobs is a list of (hostname, commands) tuples.
+    Returns (results_dict, not_attempted_list).
+    """
+    results = {}
+    not_attempted = []
+    for idx, (hostname, commands) in enumerate(device_jobs):
+        ok, output_lines = configure_device(hostname, commands)
+        for line in output_lines:
+            print(line)
+        results[hostname] = ok
+        if not ok:
+            print(f"  *** Stopping. {len(device_jobs) - idx - 1} device(s) not attempted.")
+            not_attempted = [h for h, _ in device_jobs[idx + 1:]]
+            break
+    return results, not_attempted
+
+
+def run_parallel(device_jobs, workers):
+    """Configure devices concurrently using a thread pool.
+
+    device_jobs is a list of (hostname, commands) tuples.
+    Returns (results_dict, not_attempted_list).  not_attempted is always
+    empty in parallel mode — every job is submitted.
+    """
+    results = {}
+    print(f"\nRunning {len(device_jobs)} device(s) with up to {workers} concurrent worker(s)...")
+    logger.info(f"Running {len(device_jobs)} device(s) with up to {workers} concurrent worker(s)")
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_host = {
+            executor.submit(configure_device, hostname, commands): hostname
+            for hostname, commands in device_jobs
+        }
+        for future in as_completed(future_to_host):
+            hostname = future_to_host[future]
+            try:
+                ok, output_lines = future.result()
+            except Exception as e:
+                # Should be rare — configure_device catches its own errors.
+                ok = False
+                output_lines = [f"\n  *** Unhandled error on {hostname}: {e}"]
+                logger.exception(f"Unhandled error on {hostname}")
+            # Print this device's full block as a single, uninterrupted chunk.
+            for line in output_lines:
+                print(line)
+            results[hostname] = ok
+    return results, []
 
 
 def main():
-    if len(sys.argv) != 2:
-        print("Usage:  python nxos_configure.py CHG0002222222")
-        sys.exit(1)
-
-    change = sys.argv[1]
+    args = parse_args()
+    change = args.change
     commands_dir = Path("commands") / change
 
     if not commands_dir.is_dir():
@@ -131,31 +223,36 @@ def main():
         logger.error(f"No .txt files in {commands_dir}")
         sys.exit(1)
 
-    print(f"\nChange: {change} — {len(device_files)} device(s)")
-    logger.info(f"Change: {change} — {len(device_files)} device(s)")
-    for df in device_files:
-        count = len(load_commands(df))
-        print(f"  {df.stem}  ({count} commands)")
-        logger.info(f"  {df.stem}  ({count} commands)")
+    mode = "serial" if args.serial else f"parallel (workers={args.workers})"
+    print(f"\nChange: {change} — {len(device_files)} device(s) — mode: {mode}")
+    logger.info(f"Change: {change} — {len(device_files)} device(s) — mode: {mode}")
 
-    # Configure each device, stop on first failure
-    results = {}
+    # Build the job list, splitting out empty files as 'skipped' up front.
+    device_jobs = []
     skipped = []
     for df in device_files:
         hostname = df.stem
         commands = load_commands(df)
         if not commands:
-            print(f"\nSkipping {hostname} — empty file")
+            print(f"  Skipping {hostname} — empty file")
             logger.warning(f"Skipping {hostname} — empty file")
             skipped.append(hostname)
             continue
+        print(f"  {hostname}  ({len(commands)} commands)")
+        logger.info(f"  {hostname}  ({len(commands)} commands)")
+        device_jobs.append((hostname, commands))
 
-        ok = configure_device(hostname, commands)
-        results[hostname] = ok
-        if not ok:
-            remaining = [f.stem for f in device_files if f.stem not in results and f.stem not in skipped]
-            skipped.extend(remaining)
-            break
+    if not device_jobs:
+        print("\nNothing to do — all command files were empty.")
+        logger.warning("Nothing to do — all command files were empty.")
+        sys.exit(1)
+
+    if args.serial:
+        results, not_attempted = run_serial(device_jobs)
+    else:
+        results, not_attempted = run_parallel(device_jobs, args.workers)
+
+    skipped.extend(not_attempted)
 
     # Summary
     succeeded = [h for h, ok in results.items() if ok]
@@ -165,11 +262,11 @@ def main():
     print(f"SUMMARY for {change}")
     print(f"{'='*60}")
     if succeeded:
-        print(f"  SUCCEEDED: {', '.join(succeeded)}")
+        print(f"  SUCCEEDED: {', '.join(sorted(succeeded))}")
     if failed:
-        print(f"  FAILED:    {', '.join(failed)}")
+        print(f"  FAILED:    {', '.join(sorted(failed))}")
     if skipped:
-        print(f"  SKIPPED:   {', '.join(skipped)}")
+        print(f"  SKIPPED:   {', '.join(sorted(skipped))}")
     print(f"\n  Log file:  {log_path}")
     print(f"{'='*60}")
 
