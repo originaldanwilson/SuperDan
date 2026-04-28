@@ -15,6 +15,27 @@ import os
 import ssl
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
+# Workaround: Python 3.13 on RHEL has a bug where get_unverified_chain() returns
+# None instead of [] when there is no peer certificate chain, crashing the handshake.
+if hasattr(ssl, "SSLObject") and hasattr(ssl.SSLObject, "get_unverified_chain"):
+    _orig_guc = ssl.SSLObject.get_unverified_chain
+    ssl.SSLObject.get_unverified_chain = lambda self: (_orig_guc(self) or [])
+
+
+class SecureHTTPServer(HTTPServer):
+    """HTTPServer that applies TLS per accepted connection rather than on the
+    listening socket, avoiding several Python 3.13 SSL wrapping bugs."""
+
+    def __init__(self, server_address, handler_class, certfile, keyfile):
+        super().__init__(server_address, handler_class)
+        self._ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self._ctx.load_cert_chain(certfile=certfile, keyfile=keyfile)
+
+    def get_request(self):
+        newsock, addr = self.socket.accept()
+        connstream = self._ctx.wrap_socket(newsock, server_side=True)
+        return connstream, addr
+
 
 def make_handler(filepath: str):
     filename = os.path.basename(filepath)
@@ -59,11 +80,12 @@ def main():
             "-days 365 -nodes -subj '/CN=localhost'"
         )
 
-    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-    context.load_cert_chain(certfile=args.cert, keyfile=args.key)
-
-    server = HTTPServer(("0.0.0.0", args.port), make_handler(args.file))
-    server.socket = context.wrap_socket(server.socket, server_side=True)
+    server = SecureHTTPServer(
+        ("0.0.0.0", args.port),
+        make_handler(args.file),
+        certfile=args.cert,
+        keyfile=args.key,
+    )
 
     print(f"Serving '{args.file}' on https://0.0.0.0:{args.port}")
     print("Press Ctrl+C to stop.")
