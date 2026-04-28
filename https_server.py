@@ -40,21 +40,30 @@ class SecureHTTPServer(HTTPServer):
 def make_handler(filepath: str):
     filename = os.path.basename(filepath)
 
+    CHUNK = 4 * 1024 * 1024  # 4 MiB
+
     class FileHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             try:
-                with open(filepath, "rb") as f:
-                    data = f.read()
-            except FileNotFoundError:
+                size = os.path.getsize(filepath)
+                f = open(filepath, "rb")
+            except (FileNotFoundError, OSError):
                 self.send_error(404, "File not found")
                 return
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/octet-stream")
-            self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/octet-stream")
+                self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+                self.send_header("Content-Length", str(size))
+                self.end_headers()
+                while True:
+                    chunk = f.read(CHUNK)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+            finally:
+                f.close()
 
         def log_message(self, fmt, *args):
             print(f"[{self.address_string()}] {fmt % args}")
