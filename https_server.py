@@ -63,7 +63,7 @@ def main():
     context.load_cert_chain(certfile=args.cert, keyfile=args.key)
 
     server = HTTPServer(("0.0.0.0", args.port), make_handler(args.file))
-    server.socket = context.wrap_socket(server.socket, server_host_name="0.0.0.0")
+    server.socket = context.wrap_socket(server.socket, server_side=True)
 
     print(f"Serving '{args.file}' on https://0.0.0.0:{args.port}")
     print("Press Ctrl+C to stop.")
