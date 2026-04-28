@@ -59,7 +59,7 @@ def main():
             "-days 365 -nodes -subj '/CN=localhost'"
         )
 
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     context.load_cert_chain(certfile=args.cert, keyfile=args.key)
 
     server = HTTPServer(("0.0.0.0", args.port), make_handler(args.file))
