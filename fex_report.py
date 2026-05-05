@@ -208,14 +208,17 @@ def collect_switch(host, fex_list):
 # Excel report
 # ====================================================================
 
-# Column layout constants (1-based)
+# Column layout (1-based)
 #   A=1  Host Switch
 #   B=2  FEX
-#   C-I  (3-9)   show interface status  (7 cols)
-#   J=10          buffer
-#   K-N  (11-14)  show interface description (4 cols)
-BUFFER_COL = 10
-TOTAL_COLS = 14
+#   C=3  Port
+#   D=4  Description  (from show interface description — replaces truncated Name)
+#   E=5  Status
+#   F=6  Vlan
+#   G=7  Duplex
+#   H=8  Speed
+#   I=9  Type
+TOTAL_COLS = 9
 
 
 def build_report(all_data):
@@ -233,10 +236,8 @@ def build_report(all_data):
     # ---- headers ----
     headers = [
         "Host Switch", "FEX",                               # A-B
-        "Port", "Name", "Status", "Vlan",                   # C-F  (status)
+        "Port", "Description", "Status", "Vlan",            # C-F
         "Duplex", "Speed", "Type",                          # G-I
-        "",                                                  # J  buffer
-        "Interface", "Type", "Speed", "Description",        # K-N (description)
     ]
     for ci, text in enumerate(headers, 1):
         cell = ws.cell(row=1, column=ci, value=text)
@@ -255,33 +256,21 @@ def build_report(all_data):
                 desc_map[normalize_intf(d["interface"])] = d
 
             for entry in status_rows:
+                # Use full description from show int description instead
+                # of the truncated Name from show int status
+                key = normalize_intf(entry.get("port", ""))
+                desc = desc_map.get(key, {})
+                full_desc = desc.get("description", entry.get("name", ""))
+
                 ws.cell(row=row, column=1, value=host)
                 ws.cell(row=row, column=2, value=fex)
                 ws.cell(row=row, column=3, value=entry.get("port", ""))
-                ws.cell(row=row, column=4, value=entry.get("name", ""))
+                ws.cell(row=row, column=4, value=full_desc)
                 ws.cell(row=row, column=5, value=entry.get("status", ""))
                 ws.cell(row=row, column=6, value=entry.get("vlan", ""))
                 ws.cell(row=row, column=7, value=entry.get("duplex", ""))
                 ws.cell(row=row, column=8, value=entry.get("speed", ""))
                 ws.cell(row=row, column=9, value=entry.get("type", ""))
-
-                # buffer — intentionally blank
-                ws.cell(row=row, column=BUFFER_COL, value="")
-
-                # matched description data
-                key = normalize_intf(entry.get("port", ""))
-                desc = desc_map.get(key, {})
-
-                ws.cell(row=row, column=11, value=desc.get("interface", ""))
-                if four_col:
-                    ws.cell(row=row, column=12, value=desc.get("type", ""))
-                    ws.cell(row=row, column=13, value=desc.get("speed", ""))
-                    ws.cell(row=row, column=14, value=desc.get("description", ""))
-                else:
-                    # 2-column output — put description in the last column
-                    ws.cell(row=row, column=12, value="")
-                    ws.cell(row=row, column=13, value="")
-                    ws.cell(row=row, column=14, value=desc.get("description", ""))
 
                 # gray background for anything not "connected"
                 if entry.get("status", "").lower() != "connected":
@@ -293,9 +282,6 @@ def build_report(all_data):
     # ---- column widths ----
     for ci in range(1, TOTAL_COLS + 1):
         letter = get_column_letter(ci)
-        if ci == BUFFER_COL:
-            ws.column_dimensions[letter].width = 12
-            continue
         max_len = max(
             (len(str(cell.value or "")) for cell in ws[letter]),
             default=8,
