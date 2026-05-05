@@ -29,9 +29,6 @@ SWITCHES = {
     "switch2.example.com": [103],
 }
 
-# Port range and module inside each FEX (adjust for your hardware)
-FEX_PORT_RANGE = "1-48"
-FEX_MODULE = 1
 
 
 # ====================================================================
@@ -155,6 +152,12 @@ def intf_sort_key(entry):
 # Data collection
 # ====================================================================
 
+def _filter_by_fex(rows, fex, key="port"):
+    """Return only rows whose interface belongs to the given FEX number."""
+    prefix = f"eth{fex}/"
+    return [r for r in rows if normalize_intf(r.get(key, "")).startswith(prefix)]
+
+
 def collect_switch(host, fex_list):
     """SSH to one switch and return data for every requested FEX."""
     logger.info(f"Connecting to {host}")
@@ -175,24 +178,17 @@ def collect_switch(host, fex_list):
             conn.enable()
             logger.info(f"Connected to {host}")
 
+            # Collect full output once, then filter per FEX
+            raw_status = conn.send_command("show interface status")
+            all_status = parse_interface_status(raw_status)
+
+            raw_desc = conn.send_command("show interface description")
+            all_desc, four_col = parse_interface_description(raw_desc)
+
             for fex in fex_list:
-                intf = f"Eth{fex}/{FEX_MODULE}/{FEX_PORT_RANGE}"
-                logger.info(f"  FEX {fex}  ({intf})")
-
-                raw_status = conn.send_command(f"show interface {intf} status")
-                if "Invalid" in raw_status or "%" in raw_status:
-                    logger.warning(f"  status command error on {host} FEX {fex}: "
-                                   f"{raw_status.strip().splitlines()[0]}")
-                    continue
-                status_rows = parse_interface_status(raw_status)
-
-                raw_desc = conn.send_command(f"show interface {intf} description")
-                if "Invalid" in raw_desc or "%" in raw_desc:
-                    logger.warning(f"  description command error on {host} FEX {fex}: "
-                                   f"{raw_desc.strip().splitlines()[0]}")
-                    desc_rows, four_col = [], True
-                else:
-                    desc_rows, four_col = parse_interface_description(raw_desc)
+                logger.info(f"  FEX {fex}")
+                status_rows = _filter_by_fex(all_status, fex, key="port")
+                desc_rows = _filter_by_fex(all_desc, fex, key="interface")
 
                 status_rows.sort(key=intf_sort_key)
                 logger.info(f"    {len(status_rows)} status / {len(desc_rows)} description entries")
