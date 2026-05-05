@@ -232,6 +232,7 @@ def build_report(all_data):
     hdr_font = Font(bold=True, color="FFFFFF", size=11)
     hdr_align = Alignment(horizontal="center")
     gray_fill = PatternFill("solid", fgColor="D9D9D9")
+    red_strike = Font(color="FF0000", strikethrough=True)
 
     # ---- headers ----
     headers = [
@@ -272,10 +273,11 @@ def build_report(all_data):
                 ws.cell(row=row, column=8, value=entry.get("speed", ""))
                 ws.cell(row=row, column=9, value=entry.get("type", ""))
 
-                # gray background for anything not "connected"
+                # gray background + red strikethrough for non-connected
                 if entry.get("status", "").lower() != "connected":
                     for c in range(1, TOTAL_COLS + 1):
                         ws.cell(row=row, column=c).fill = gray_fill
+                        ws.cell(row=row, column=c).font = red_strike
 
                 row += 1
 
