@@ -214,7 +214,13 @@ def collect_switch(host, fex_list):
 #   G=7  Duplex
 #   H=8  Speed
 #   I=9  Type
-TOTAL_COLS = 9
+#   J=10 New Switch
+#   K=11 New Switchport
+#   L=12 Divider (light blue, width 1)
+#   M=13 Platform Owner
+#   N=14 Divider (light blue, width 1)
+TOTAL_COLS = 14
+DIVIDER_COLS = [12, 14]
 
 
 def build_report(all_data):
@@ -229,18 +235,24 @@ def build_report(all_data):
     hdr_align = Alignment(horizontal="center")
     gray_fill = PatternFill("solid", fgColor="D9D9D9")
     red_strike = Font(color="FF0000", strikethrough=True)
+    blue_fill = PatternFill("solid", fgColor="BDD7EE")
 
     # ---- headers ----
     headers = [
         "Host Switch", "FEX",                               # A-B
         "Port", "Description", "Status", "Vlan",            # C-F
         "Duplex", "Speed", "Type",                          # G-I
+        "New Switch", "New Switchport",                      # J-K
+        "", "Platform Owner", "",                            # L-N
     ]
     for ci, text in enumerate(headers, 1):
         cell = ws.cell(row=1, column=ci, value=text)
-        cell.fill = hdr_fill
-        cell.font = hdr_font
-        cell.alignment = hdr_align
+        if ci in DIVIDER_COLS:
+            cell.fill = blue_fill
+        else:
+            cell.fill = hdr_fill
+            cell.font = hdr_font
+            cell.alignment = hdr_align
 
     # ---- data rows ----
     row = 2
@@ -277,9 +289,18 @@ def build_report(all_data):
 
                 row += 1
 
+    # ---- divider columns: light blue fill from row 1 to last data row ----
+    last_row = row - 1
+    for dc in DIVIDER_COLS:
+        for r in range(1, last_row + 1):
+            ws.cell(row=r, column=dc).fill = blue_fill
+
     # ---- column widths ----
     for ci in range(1, TOTAL_COLS + 1):
         letter = get_column_letter(ci)
+        if ci in DIVIDER_COLS:
+            ws.column_dimensions[letter].width = 1
+            continue
         max_len = max(
             (len(str(cell.value or "")) for cell in ws[letter]),
             default=8,
