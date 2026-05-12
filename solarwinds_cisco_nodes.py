@@ -9,14 +9,24 @@ import requests
 import csv
 import json
 import os
+import sys
 import argparse
 import urllib.parse
 from datetime import datetime
 from typing import Dict, List
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+# Add script directory to path so we can import tools.py
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from tools import get_ad_creds
 
 # Disable SSL warnings for self-signed certificates
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# SolarWinds Orion server - update this if the server changes
+SOLARWINDS_SERVER = "https://orionApi.company.com:17774"
 
 # SWQL query for Cisco nodes
 CISCO_NODES_QUERY = """
@@ -33,8 +43,10 @@ ORDER BY MachineType, DisplayName
 class SolarWindsAPI:
     """SolarWinds Orion REST API client"""
 
-    def __init__(self, server_url: str, username: str, password: str, verify_ssl: bool = False):
+    def __init__(self, server_url: str, username: str, password: str,
+                 verify_ssl: bool = False, timeout: int = 60):
         self.server_url = server_url.rstrip('/')
+        self.timeout = timeout
         self.session = requests.Session()
         self.session.auth = (username, password)
         self.session.headers.update({
@@ -42,6 +54,16 @@ class SolarWindsAPI:
             'Accept': 'application/json'
         })
         self.verify_ssl = verify_ssl
+
+        # Retry up to 3 times on connection/timeout errors
+        retry_strategy = Retry(
+            total=3,
+            backoff_factor=2,
+            status_forcelist=[500, 502, 503, 504]
+        )
+        adapter = HTTPAdapter(max_retries=retry_strategy)
+        self.session.mount('https://', adapter)
+        self.session.mount('http://', adapter)
 
     def query(self, swql: str) -> List[Dict]:
         """
@@ -55,10 +77,10 @@ class SolarWindsAPI:
             List of result dictionaries
         """
         encoded_query = urllib.parse.quote(swql)
-        url = f"{self.server_url}/SolarWinds/InformationService/v3/Json/Query?query={encoded_query}"
+        url = f"{self.server_url}/InformationService/v3/Json/Query?query={encoded_query}"
 
         try:
-            response = self.session.get(url, verify=self.verify_ssl)
+            response = self.session.get(url, verify=self.verify_ssl, timeout=self.timeout)
             response.raise_for_status()
             data = response.json()
             return data.get('results', [])
@@ -113,12 +135,6 @@ def main():
     parser = argparse.ArgumentParser(
         description='Query SolarWinds Orion for Cisco node inventory and export to CSV'
     )
-    parser.add_argument('--server', default=os.getenv('SOLARWINDS_SERVER'),
-                        help='SolarWinds server URL (or set SOLARWINDS_SERVER env var)')
-    parser.add_argument('--username', default=os.getenv('SOLARWINDS_USERNAME'),
-                        help='SolarWinds username (or set SOLARWINDS_USERNAME env var)')
-    parser.add_argument('--password', default=os.getenv('SOLARWINDS_PASSWORD'),
-                        help='SolarWinds password (or set SOLARWINDS_PASSWORD env var)')
     parser.add_argument('--output', '-o',
                         default=f'cisco_nodes_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv',
                         help='Output CSV file path (default: cisco_nodes_YYYYMMDD_HHMMSS.csv)')
@@ -129,23 +145,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate required params
-    if not args.server:
-        parser.error("--server is required (or set SOLARWINDS_SERVER env var)")
-    if not args.username:
-        parser.error("--username is required (or set SOLARWINDS_USERNAME env var)")
-    if not args.password:
-        parser.error("--password is required (or set SOLARWINDS_PASSWORD env var)")
+    # Get AD credentials from tools.py
+    username, password = get_ad_creds()
 
     # Initialize API client
     api = SolarWindsAPI(
-        server_url=args.server,
-        username=args.username,
-        password=args.password,
+        server_url=SOLARWINDS_SERVER,
+        username=username,
+        password=password,
         verify_ssl=args.verify_ssl
     )
 
-    print(f"Querying SolarWinds at {args.server} for Cisco nodes...")
+    print(f"Querying SolarWinds at {SOLARWINDS_SERVER} for Cisco nodes...")
     print(f"SWQL:\n  {CISCO_NODES_QUERY.replace(chr(10), chr(10) + '  ')}\n")
 
     # Execute the query
