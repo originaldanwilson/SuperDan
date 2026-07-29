@@ -276,8 +276,25 @@ class BookmarkManager(QMainWindow):
             else:
                 with open(path, 'w', encoding='utf-8') as f:
                     f.write(self._generate_html())
-            self._status(f"Saved → {path}")
+            self._status(f"Saved \u2192 {path}")
             QMessageBox.information(self, "Saved", f"Bookmarks saved to:\n{path}")
+        except PermissionError:
+            # Common on corporate Windows where the source file location is protected.
+            # Offer to save to Desktop instead.
+            desktop = Path.home() / 'Desktop' / 'bookmarks_edited.html'
+            QMessageBox.warning(
+                self, "Permission Denied",
+                f"Cannot write to:\n{path}\n\n"
+                "The location may be read-only or protected by your IT policy.\n"
+                "Please choose a different save location (e.g. Desktop or Documents)."
+            )
+            new_path, _ = QFileDialog.getSaveFileName(
+                self, "Save Bookmarks As", str(desktop),
+                "HTML Bookmark Files (*.html);;JSON Files (*.json)"
+            )
+            if new_path:
+                self.current_file = new_path
+                self._write_file(new_path)
         except Exception as e:
             QMessageBox.critical(self, "Save Error", f"Could not save file:\n{e}")
 
