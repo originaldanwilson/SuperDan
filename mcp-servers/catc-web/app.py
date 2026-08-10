@@ -6,6 +6,7 @@ Browse: http://localhost:8080
 """
 
 import os
+import getpass
 import requests
 import urllib3
 from flask import Flask, render_template, jsonify
@@ -16,7 +17,7 @@ app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspa
 
 CATC_HOST     = os.environ.get("CATALYST_CENTER_HOST", "")
 CATC_USER     = os.environ.get("CATALYST_CENTER_USERNAME", "")
-CATC_PASS     = os.environ.get("CATALYST_CENTER_PASSWORD", "")
+CATC_PASS     = os.environ.get("CATALYST_CENTER_SECRET", "")
 CATC_VERIFY   = os.environ.get("CATALYST_CENTER_VERIFY_SSL", "false").lower() == "true"
 
 
@@ -76,7 +77,9 @@ def api_devices():
 
 if __name__ == "__main__":
     if not CATC_HOST:
-        print("ERROR: Set CATALYST_CENTER_HOST, CATALYST_CENTER_USERNAME, CATALYST_CENTER_PASSWORD")
+        print("ERROR: Set CATALYST_CENTER_HOST and CATALYST_CENTER_USERNAME env vars")
         raise SystemExit(1)
+    if not CATC_PASS:
+        CATC_PASS = getpass.getpass("Catalyst Center password: ")
     print(f"Starting CatC Web UI → http://0.0.0.0:8080  (target: {CATC_HOST})")
     app.run(host="0.0.0.0", port=8080, debug=False)
