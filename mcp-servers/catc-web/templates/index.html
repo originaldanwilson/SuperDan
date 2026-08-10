@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catalyst Center — Device Inventory</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: #0f0f1a; color: #cdd6f4; min-height: 100vh; }
+
+  header {
+    background: #1e1e2e; border-bottom: 1px solid #313244;
+    padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+  }
+  header h1 { font-size: 18px; color: #89b4fa; font-weight: 600; }
+  header .subtitle { font-size: 12px; color: #6c7086; }
+
+  .toolbar {
+    padding: 12px 24px; background: #181825; border-bottom: 1px solid #313244;
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  .toolbar input {
+    background: #1e1e2e; border: 1px solid #45475a; border-radius: 6px;
+    color: #cdd6f4; padding: 7px 12px; font-size: 13px; width: 260px;
+  }
+  .toolbar input:focus { outline: none; border-color: #89b4fa; }
+  .toolbar select {
+    background: #1e1e2e; border: 1px solid #45475a; border-radius: 6px;
+    color: #cdd6f4; padding: 7px 12px; font-size: 13px;
+  }
+  .btn {
+    background: #313244; border: 1px solid #45475a; border-radius: 6px;
+    color: #cdd6f4; padding: 7px 16px; font-size: 13px; cursor: pointer;
+  }
+  .btn:hover { background: #45475a; }
+  .count { margin-left: auto; font-size: 12px; color: #6c7086; }
+
+  .status-bar {
+    padding: 8px 24px; font-size: 12px; color: #6c7086;
+    background: #181825; border-bottom: 1px solid #313244;
+  }
+  .status-bar.error { color: #f38ba8; }
+
+  .table-wrap { padding: 16px 24px; overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th {
+    background: #1e1e2e; color: #89b4fa; text-align: left;
+    padding: 10px 12px; border-bottom: 1px solid #313244;
+    cursor: pointer; user-select: none; white-space: nowrap;
+  }
+  th:hover { color: #cba6f7; }
+  th.sorted-asc::after  { content: " ▲"; font-size: 10px; }
+  th.sorted-desc::after { content: " ▼"; font-size: 10px; }
+  td { padding: 9px 12px; border-bottom: 1px solid #1e1e2e; vertical-align: middle; }
+  tr:hover td { background: #1e1e2e; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+  }
+  .badge-reachable   { background: #1a3a2a; color: #a6e3a1; }
+  .badge-unreachable { background: #3a1a1a; color: #f38ba8; }
+  .badge-unknown     { background: #2a2a1a; color: #f9e2af; }
+
+  .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid #313244; border-top-color: #89b4fa;
+    border-radius: 50%; animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { text-align: center; padding: 48px; color: #6c7086; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🌐 Catalyst Center — Device Inventory</h1>
+    <div class="subtitle">Live data from Catalyst Center API</div>
+  </div>
+  <button class="btn" style="margin-left:auto" onclick="load()">⟳ Refresh</button>
+</header>
+
+<div class="toolbar">
+  <input id="search" type="text" placeholder="Search hostname, IP, platform…" oninput="filter()">
+  <select id="roleFilter" onchange="filter()">
+    <option value="">All Roles</option>
+  </select>
+  <select id="reachFilter" onchange="filter()">
+    <option value="">All Reachability</option>
+    <option value="Reachable">Reachable</option>
+    <option value="Unreachable">Unreachable</option>
+  </select>
+  <span class="count" id="count"></span>
+</div>
+
+<div class="status-bar" id="status">Loading…</div>
+
+<div class="table-wrap">
+  <table id="devTable">
+    <thead>
+      <tr>
+        <th onclick="sortBy('hostname')">Hostname</th>
+        <th onclick="sortBy('ip')">Mgmt IP</th>
+        <th onclick="sortBy('platform')">Platform</th>
+        <th onclick="sortBy('series')">Series</th>
+        <th onclick="sortBy('role')">Role</th>
+        <th onclick="sortBy('software')">Software</th>
+        <th onclick="sortBy('site')">Site</th>
+        <th onclick="sortBy('reachability')">Reachability</th>
+      </tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+  <div class="empty" id="empty" style="display:none">No devices match your filter.</div>
+</div>
+
+<script>
+let allDevices = [];
+let sortCol = 'hostname';
+let sortDir = 1;
+
+async function load() {
+  document.getElementById('status').textContent = 'Fetching from Catalyst Center…';
+  document.getElementById('status').className = 'status-bar';
+  document.getElementById('tbody').innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px"><div class="spinner"></div></td></tr>';
+
+  try {
+    const r = await fetch('/api/devices');
+    const data = await r.json();
+    if (!data.ok) throw new Error(data.error);
+
+    allDevices = data.devices;
+    document.getElementById('status').textContent =
+      `Loaded ${data.total} devices  ·  ${new Date().toLocaleTimeString()}`;
+
+    // Populate role filter
+    const roles = [...new Set(allDevices.map(d => d.role))].sort();
+    const sel = document.getElementById('roleFilter');
+    sel.innerHTML = '<option value="">All Roles</option>';
+    roles.forEach(r => { const o = document.createElement('option'); o.value = o.textContent = r; sel.appendChild(o); });
+
+    filter();
+  } catch(e) {
+    document.getElementById('status').textContent = 'Error: ' + e.message;
+    document.getElementById('status').className = 'status-bar error';
+    document.getElementById('tbody').innerHTML = '';
+  }
+}
+
+function filter() {
+  const q     = document.getElementById('search').value.toLowerCase();
+  const role  = document.getElementById('roleFilter').value;
+  const reach = document.getElementById('reachFilter').value;
+
+  let rows = allDevices.filter(d => {
+    const matchQ = !q || [d.hostname, d.ip, d.platform, d.series, d.site, d.software]
+      .some(v => v.toLowerCase().includes(q));
+    const matchRole  = !role  || d.role === role;
+    const matchReach = !reach || d.reachability === reach;
+    return matchQ && matchRole && matchReach;
+  });
+
+  rows.sort((a, b) => {
+    const av = (a[sortCol] || '').toString().toLowerCase();
+    const bv = (b[sortCol] || '').toString().toLowerCase();
+    return av < bv ? -sortDir : av > bv ? sortDir : 0;
+  });
+
+  document.getElementById('count').textContent = `Showing ${rows.length} of ${allDevices.length}`;
+  document.getElementById('empty').style.display = rows.length ? 'none' : 'block';
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML = rows.map(d => `
+    <tr>
+      <td><strong>${esc(d.hostname)}</strong></td>
+      <td><code style="color:#89dceb">${esc(d.ip)}</code></td>
+      <td>${esc(d.platform)}</td>
+      <td>${esc(d.series)}</td>
+      <td>${esc(d.role)}</td>
+      <td>${esc(d.software)}</td>
+      <td>${esc(d.site)}</td>
+      <td>${reachBadge(d.reachability)}</td>
+    </tr>`).join('');
+
+  // Update sort indicators
+  document.querySelectorAll('th').forEach(th => {
+    th.className = '';
+    if (th.getAttribute('onclick') === `sortBy('${sortCol}')`)
+      th.className = sortDir === 1 ? 'sorted-asc' : 'sorted-desc';
+  });
+}
+
+function sortBy(col) {
+  if (sortCol === col) sortDir *= -1;
+  else { sortCol = col; sortDir = 1; }
+  filter();
+}
+
+function reachBadge(v) {
+  if (v === 'Reachable')   return `<span class="badge badge-reachable">Reachable</span>`;
+  if (v === 'Unreachable') return `<span class="badge badge-unreachable">Unreachable</span>`;
+  return `<span class="badge badge-unknown">${esc(v)}</span>`;
+}
+
+function esc(s) {
+  return String(s ?? '—').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+load();
+</script>
+</body>
+</html>
