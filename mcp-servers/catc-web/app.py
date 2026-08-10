@@ -15,10 +15,10 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 
-CATC_HOST     = os.environ.get("CATALYST_CENTER_HOST", "")
-CATC_USER     = os.environ.get("CATALYST_CENTER_USERNAME", "")
-CATC_PASS     = os.environ.get("CATALYST_CENTER_SECRET", "")
-CATC_VERIFY   = os.environ.get("CATALYST_CENTER_VERIFY_SSL", "false").lower() == "true"
+CATC_HOST   = os.environ.get("CATALYST_CENTER_HOST", "")
+CATC_USER   = os.environ.get("CATALYST_CENTER_USERNAME", "")
+CATC_PASS   = os.environ.get("CATALYST_CENTER_SECRET", "")
+CATC_VERIFY = os.environ.get("CATALYST_CENTER_VERIFY_SSL", "false").lower() == "true"
 
 
 def get_token():
@@ -77,9 +77,10 @@ def api_devices():
 
 if __name__ == "__main__":
     if not CATC_HOST:
-        print("ERROR: Set CATALYST_CENTER_HOST and CATALYST_CENTER_USERNAME env vars")
-        raise SystemExit(1)
+        CATC_HOST = input("Catalyst Center host (e.g. https://10.0.0.1): ").strip()
+    if not CATC_USER:
+        CATC_USER = input("Username: ").strip()
     if not CATC_PASS:
-        CATC_PASS = getpass.getpass("Catalyst Center password: ")
-    print(f"Starting CatC Web UI → http://0.0.0.0:8080  (target: {CATC_HOST})")
+        CATC_PASS = getpass.getpass("Password: ")
+    print(f"Starting CatC Web UI \u2192 http://0.0.0.0:8080  (target: {CATC_HOST})")
     app.run(host="0.0.0.0", port=8080, debug=False)
