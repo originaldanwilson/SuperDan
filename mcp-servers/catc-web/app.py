@@ -12,7 +12,7 @@ from flask import Flask, render_template, jsonify
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder=os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates'))
 
 CATC_HOST     = os.environ.get("CATALYST_CENTER_HOST", "")
 CATC_USER     = os.environ.get("CATALYST_CENTER_USERNAME", "")
