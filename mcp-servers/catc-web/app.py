@@ -22,7 +22,7 @@ CATC_VERIFY = os.environ.get("CATALYST_CENTER_VERIFY_SSL", "false").lower() == "
 
 
 def get_token():
-    url = f"{CATC_HOST}/dna/system/api/v1/auth/token"
+    url = f"{CATC_HOST}/dna/system/api/v2/auth/token"
     resp = requests.post(url, auth=(CATC_USER, CATC_PASS), verify=CATC_VERIFY, timeout=10)
     resp.raise_for_status()
     return resp.json()["Token"]
