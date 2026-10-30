@@ -168,15 +168,19 @@ def parse_vtp_counters(output: str) -> dict:
 #  Device collection (runs in thread pool)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def collect_device(host: str, credentials: dict) -> dict:
+def collect_device(device: dict, credentials: dict) -> dict:
     """
     Connect to one device and collect all VTP data.
+    device = {"name": hostname, "host": ip}
     Returns a result dict — never raises; errors go into result['error'].
     """
     logger = logging.getLogger(__name__)
-    logger.info(f"Connecting to {host}")
+    name = device["name"]
+    host = device["host"]
+    logger.info(f"Connecting to {name} ({host})")
 
     result = {
+        "name":       name,
         "host":       host,
         "status":     "Failed",
         "error":      "",
@@ -213,7 +217,7 @@ def collect_device(host: str, credentials: dict) -> dict:
         result["interfaces"] = parse_vtp_interfaces(intf_raw)
         result["counters"]   = parse_vtp_counters(counter_raw)
         result["status"]     = "OK"
-        logger.info(f"{host}  →  {result['vtp_status'].get('vtp_mode', '?')}")
+        logger.info(f"{name} ({host})  →  {result['vtp_status'].get('vtp_mode', '?')}")
 
     except NetmikoAuthenticationException as e:
         result["error"] = f"Auth failed: {e}"
@@ -267,7 +271,7 @@ def _style_data_row(ws, row: int, ncols: int, fill: PatternFill = None):
 def build_status_sheet(ws, results: list):
     """Sheet 1 — VTP Status (one row per device)."""
     headers = [
-        "Hostname / IP", "VTP Mode", "VTP Domain", "VTP Version",
+        "Hostname", "IP Address", "VTP Mode", "VTP Domain", "VTP Version",
         "Config Revision", "Existing VLANs", "Max VLANs",
         "Pruning", "V2 Mode", "Status", "Error",
     ]
@@ -280,6 +284,7 @@ def build_status_sheet(ws, results: list):
         row_fill = mode_fill(mode) if res["status"] == "OK" else FILL["unknown"]
 
         values = [
+            res["name"],
             res["host"],
             mode,
             s.get("vtp_domain", ""),
@@ -304,7 +309,7 @@ def build_status_sheet(ws, results: list):
 def build_traffic_sheet(ws, results: list):
     """Sheet 2 — devices with non-zero inbound VTP advertisements."""
     headers = [
-        "Hostname / IP", "VTP Mode",
+        "Hostname", "IP Address", "VTP Mode",
         "Summary Rcvd", "Subset Rcvd", "Request Rcvd",
         "Summary Sent", "Subset Sent",
         "Rev Errors", "Digest Errors",
@@ -331,6 +336,7 @@ def build_traffic_sheet(ws, results: list):
         row_fill = FILL["warning"] if rcvd > 0 else None
 
         values = [
+            res["name"],
             res["host"],
             mode,
             c.get("summary_rcvd", 0),
@@ -356,7 +362,7 @@ def build_traffic_sheet(ws, results: list):
 
 def build_interface_sheet(ws, results: list):
     """Sheet 3 — per-interface VTP state (only enabled interfaces)."""
-    headers = ["Hostname / IP", "VTP Mode", "Interface", "VTP State"]
+    headers = ["Hostname", "IP Address", "VTP Mode", "Interface", "VTP State"]
     _header_row(ws, headers)
     ws.freeze_panes = "A2"
 
@@ -368,7 +374,7 @@ def build_interface_sheet(ws, results: list):
         for intf in res["interfaces"]:
             if intf["vtp_status"] != "enabled":
                 continue        # only show enabled interfaces
-            values = [res["host"], mode, intf["interface"], intf["vtp_status"]]
+            values = [res["name"], res["host"], mode, intf["interface"], intf["vtp_status"]]
             for c_idx, val in enumerate(values, 1):
                 cell = ws.cell(row=r_idx, column=c_idx, value=val)
                 cell.fill      = FILL["alt_row"] if r_idx % 2 == 0 else None
@@ -457,16 +463,19 @@ def build_summary_sheet(ws, results: list):
     if failed:
         ws.cell(row=row, column=1, value="Failed Devices").font = BOLD_FONT
         row += 1
-        for col, h in enumerate(["Hostname / IP", "Error"], 1):
+        for col, h in enumerate(["Hostname", "IP Address", "Error"], 1):
             c = ws.cell(row=row, column=col, value=h)
             c.fill = FILL["header"]; c.font = HEADER_FONT; c.alignment = CENTER
         row += 1
         for res in failed:
-            ws.cell(row=row, column=1, value=res["host"]).alignment   = LEFT
-            ws.cell(row=row, column=2, value=res["error"]).alignment  = LEFT
-            ws.cell(row=row, column=1).fill = FILL["unknown"]
-            ws.cell(row=row, column=2).fill = FILL["unknown"]
+            ws.cell(row=row, column=1, value=res["name"]).alignment  = LEFT
+            ws.cell(row=row, column=2, value=res["host"]).alignment  = LEFT
+            ws.cell(row=row, column=3, value=res["error"]).alignment = LEFT
+            for col in range(1, 4):
+                ws.cell(row=row, column=col).fill = FILL["unknown"]
             row += 1
+
+    ws.column_dimensions["C"].width = 50
 
     ws.column_dimensions["A"].width = 42
     ws.column_dimensions["B"].width = 18
@@ -477,25 +486,76 @@ def build_summary_sheet(ws, results: list):
 #  File loading / argument parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Keywords that identify a Catalyst switch in the description field
+CATALYST_KEYWORDS = ["catalyst", "9300", "9400", "9500", "9200", "9600"]
+
+# Keywords that identify a router — these are excluded even if a Catalyst
+# keyword also matches (e.g. a Catalyst ISR description)
+ROUTER_KEYWORDS   = ["router", " isr", " asr", "c8", "c11", "c29", "4331",
+                     "4351", "4431", "4451", "891", "892", "896"]
+
+
+def _is_catalyst(description: str) -> bool:
+    """Return True if description looks like a Catalyst switch, not a router."""
+    desc = description.lower()
+    if any(kw in desc for kw in ROUTER_KEYWORDS):
+        return False
+    return any(kw in desc for kw in CATALYST_KEYWORDS)
+
+
 def load_hosts(path: str) -> list:
-    """Read hosts from a comma-delimited file.  Blank lines and # comments ignored."""
+    """
+    Parse a SolarWinds-style CSV export:
+        switchname.company.com, switchIP, description, 1
+
+    Returns a list of dicts: [{"name": hostname, "host": ip}, ...]
+    Only rows whose description matches a Catalyst switch are included.
+    Lines beginning with # are skipped.
+    """
     if not os.path.exists(path):
         print(f"ERROR: device file not found: {path}")
         sys.exit(1)
 
-    hosts = []
+    hosts    = []
+    skipped  = 0
+    errors   = 0
+
     with open(path) as fh:
-        for line in fh:
-            line = line.strip()
+        for lineno, raw in enumerate(fh, 1):
+            line = raw.strip()
             if not line or line.startswith("#"):
                 continue
-            for part in line.split(","):
-                h = part.strip()
-                if h:
-                    hosts.append(h)
+
+            parts = [p.strip() for p in line.split(",")]
+
+            if len(parts) < 2:
+                logging.warning(f"Line {lineno}: too few columns, skipping: {line}")
+                errors += 1
+                continue
+
+            hostname    = parts[0]
+            ip          = parts[1]
+            description = parts[2] if len(parts) > 2 else ""
+
+            if not hostname or not ip:
+                logging.warning(f"Line {lineno}: missing hostname or IP, skipping.")
+                errors += 1
+                continue
+
+            if description and not _is_catalyst(description):
+                logging.debug(f"Skipping {hostname} — description does not match Catalyst: {description!r}")
+                skipped += 1
+                continue
+
+            hosts.append({"name": hostname, "host": ip})
+
+    if skipped:
+        print(f"  Filtered out {skipped} non-Catalyst devices based on description.")
+    if errors:
+        print(f"  Skipped {errors} malformed lines.")
 
     if not hosts:
-        print(f"ERROR: no hosts found in {path}")
+        print(f"ERROR: no qualifying Catalyst hosts found in {path}")
         sys.exit(1)
 
     return hosts
@@ -544,18 +604,18 @@ def main():
     logger.info(f"Starting collection with {workers} concurrent workers …")
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(collect_device, h, credentials): h for h in hosts}
+        futures = {pool.submit(collect_device, d, credentials): d for d in hosts}
         for future in as_completed(futures):
             done += 1
             res = future.result()
             results.append(res)
             pct = done / total * 100
-            print(f"  [{done:>4}/{total}  {pct:5.1f}%]  {res['host']:<30}  {res['status']}"
-                  + (f"  ({res['vtp_status'].get('vtp_mode', '')})" if res['status'] == 'OK' else f"  {res['error'][:60]}"),
+            print(f"  [{done:>4}/{total}  {pct:5.1f}%]  {res['name']:<35}  {res['host']:<16}  {res['status']}"
+                  + (f"  ({res['vtp_status'].get('vtp_mode', '')})" if res['status'] == 'OK' else f"  {res['error'][:50]}"),
                   flush=True)
 
     # ── Sort results by hostname for consistent output ────────────────────
-    results.sort(key=lambda r: r["host"].lower())
+    results.sort(key=lambda r: r["name"].lower())
 
     # ── Build workbook ────────────────────────────────────────────────────
     ts       = datetime.now().strftime("%Y%m%d_%H%M%S")
