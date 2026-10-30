@@ -73,14 +73,14 @@ except ImportError:
 #  Colour palette (openpyxl hex, no leading #)
 # ─────────────────────────────────────────────────────────────────────────────
 FILL = {
-    "header":      PatternFill("solid", fgColor="2E4057"),   # dark blue-grey
-    "server":      PatternFill("solid", fgColor="FF6B6B"),   # red   — VTP Server
-    "client":      PatternFill("solid", fgColor="FFD166"),   # amber — VTP Client
-    "transparent": PatternFill("solid", fgColor="A8D5A2"),   # green — Transparent
-    "off":         PatternFill("solid", fgColor="A0C4FF"),   # blue  — Off
-    "unknown":     PatternFill("solid", fgColor="D3D3D3"),   # grey  — error / unknown
-    "warning":     PatternFill("solid", fgColor="FFD166"),   # amber — traffic warning
-    "alt_row":     PatternFill("solid", fgColor="F5F5F5"),   # very light grey
+    "header":      PatternFill(fill_type="solid", fgColor="2E4057"),   # dark blue-grey
+    "server":      PatternFill(fill_type="solid", fgColor="FF6B6B"),   # red   — VTP Server
+    "client":      PatternFill(fill_type="solid", fgColor="FFD166"),   # amber — VTP Client
+    "transparent": PatternFill(fill_type="solid", fgColor="A8D5A2"),   # green — Transparent
+    "off":         PatternFill(fill_type="solid", fgColor="A0C4FF"),   # blue  — Off
+    "unknown":     PatternFill(fill_type="solid", fgColor="D3D3D3"),   # grey  — error / unknown
+    "warning":     PatternFill(fill_type="solid", fgColor="FFD166"),   # amber — traffic warning
+    "alt_row":     PatternFill(fill_type="solid", fgColor="F5F5F5"),   # very light grey
 }
 
 HEADER_FONT  = Font(bold=True, color="FFFFFF", size=11)
