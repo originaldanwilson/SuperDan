@@ -55,7 +55,7 @@ except ImportError:
         enable = getpass.getpass("Enable Secret (press Enter to skip): ")
         return user, passwd, enable
 
-    def setupLogging():
+    def setupLogging(script_name=None, timestamp=None):
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -585,7 +585,9 @@ examples:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def main():
-    setupLogging()
+    script_name = getScriptName()
+    timestamp   = datetime.now().strftime("%Y%m%d_%H%M%S")
+    setupLogging(script_name, timestamp)
     logger = logging.getLogger(__name__)
     args   = parse_args()
 
